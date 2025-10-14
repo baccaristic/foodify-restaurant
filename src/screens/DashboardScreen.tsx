@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, StyleSheet, FlatList, Text } from 'react-native';
+import { View, ScrollView, StyleSheet, FlatList, Text, ImageBackground, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
@@ -23,52 +23,68 @@ const ordersData: Order[] = [
   { id: 26, items: 3, total: 150 },
 ];
 
+const backgroundImage = require('../../assets/background.png');
+
+const gradientOverlay = {
+  uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAD0lEQVR4nGP4DwQMQLwFACeXB66Qg7+iAAAAAElFTkSuQmCC',
+};
+
 export const DashboardScreen: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
 
   const ordersCount = useMemo(() => ordersData.length, []);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <RestaurantHeader name="Torii Sushi" isOpen={isOpen} onToggle={setIsOpen} />
-
-        <View style={styles.section}>
-          <SectionHeader
-            title="Active Orders"
-            trailing={<OrderCountBadge value={ordersCount} />}
-          />
-          <FlatList
-            data={ordersData}
-            horizontal
-            keyExtractor={(item) => item.id.toString()}
-            showsHorizontalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
-            renderItem={({ item }) => (
-              <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
-            )}
-          />
+    <ImageBackground source={backgroundImage} style={styles.background} imageStyle={styles.backgroundImage}>
+      <View style={styles.overlayContainer}>
+        <View pointerEvents="none" style={styles.gradientContainer}>
+          <Image source={gradientOverlay} style={styles.gradientImage} resizeMode="stretch" />
         </View>
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar style="dark" />
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
+            <RestaurantHeader name="Torii Sushi" isOpen={isOpen} onToggle={setIsOpen} />
 
-        <View style={styles.section}>
-          <View style={styles.quickActionsRow}>
-            <QuickActionCard title="My Menu" variant="menu" />
-            <View style={styles.quickActionSpacer} />
-            <QuickActionCard title="My Orders" variant="orders" />
-          </View>
-        </View>
+            <View style={styles.section}>
+              <SectionHeader
+                title="Active Orders"
+                trailing={<OrderCountBadge value={ordersCount} />}
+              />
+              <FlatList
+                data={ordersData}
+                horizontal
+                keyExtractor={(item) => item.id.toString()}
+                showsHorizontalScrollIndicator={false}
+                ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
+                renderItem={({ item }) => (
+                  <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
+                )}
+              />
+            </View>
 
-        <View style={styles.section}>
-          <SectionHeader title="Performance Summary" />
-          <View style={styles.statsRow}>
-            <StatisticCard title="Orders Completed" value="25" change="+25%" />
-            <View style={styles.statSpacer} />
-            <StatisticCard title="Revenue" value="532" unit="DT" change="+25%" />
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+            <View style={styles.section}>
+              <View style={styles.quickActionsRow}>
+                <QuickActionCard title="My Menu" variant="menu" />
+                <View style={styles.quickActionSpacer} />
+                <QuickActionCard title="My Orders" variant="orders" />
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <SectionHeader title="Performance Summary" />
+              <View style={styles.statsRow}>
+                <StatisticCard title="Orders Completed" value="25" change="+25%" />
+                <View style={styles.statSpacer} />
+                <StatisticCard title="Revenue" value="532" unit="DT" change="+25%" />
+              </View>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    </ImageBackground>
   );
 };
 
@@ -79,9 +95,29 @@ const OrderCountBadge: React.FC<{ value: number }> = ({ value }) => (
 );
 
 const styles = StyleSheet.create({
+  background: {
+    flex: 1,
+  },
+  backgroundImage: {
+    width: '100%',
+    height: '100%',
+  },
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+  },
+  gradientContainer: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  gradientImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: colors.white,
   },
   content: {
     paddingHorizontal: moderateScale(20),
