@@ -10,10 +10,16 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@stomp/stompjs": "^7.2.1",
+    "axios": "^1.12.2",
     "expo": "~54.0.13",
+    "expo-image": "~3.0.9",
+    "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~3.0.8",
     "react": "19.1.0",
-    "react-native": "0.81.4"
+    "react-native": "0.81.4",
+    "sockjs-client": "^1.6.1",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
