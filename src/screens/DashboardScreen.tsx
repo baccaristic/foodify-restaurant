@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, ScrollView, StyleSheet, FlatList, Text, ImageBackground, Image } from 'react-native';
+import { View, ScrollView, StyleSheet, FlatList, Text, ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
+import { LinearGradient } from 'expo-linear-gradient';
 import { RestaurantHeader } from '../components/RestaurantHeader';
 import { SectionHeader } from '../components/SectionHeader';
 import { OrderCard } from '../components/OrderCard';
@@ -25,10 +26,6 @@ const ordersData: Order[] = [
 
 const backgroundImage = require('../../assets/background.png');
 
-const gradientOverlay = {
-  uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAD0lEQVR4nGP4DwQMQLwFACeXB66Qg7+iAAAAAElFTkSuQmCC',
-};
-
 export const DashboardScreen: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -37,9 +34,18 @@ export const DashboardScreen: React.FC = () => {
   return (
     <ImageBackground source={backgroundImage} style={styles.background} imageStyle={styles.backgroundImage}>
       <View style={styles.overlayContainer}>
-        <View pointerEvents="none" style={styles.gradientContainer}>
-          <Image source={gradientOverlay} style={styles.gradientImage} resizeMode="stretch" />
-        </View>
+        <LinearGradient
+          pointerEvents="none"
+          colors={[
+            'rgba(255,255,255,0.96)',
+            'rgba(255,255,255,0.88)',
+            'rgba(255,255,255,0)',
+          ]}
+          locations={[0, 0.4, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.gradientOverlay}
+        />
         <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
           <ScrollView
@@ -104,17 +110,9 @@ const styles = StyleSheet.create({
   },
   overlayContainer: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.7)',
   },
-  gradientContainer: {
+  gradientOverlay: {
     ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
-  gradientImage: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
   },
   safeArea: {
     flex: 1,
