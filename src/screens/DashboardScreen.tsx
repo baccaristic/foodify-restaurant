@@ -32,16 +32,22 @@ export const DashboardScreen: React.FC = () => {
   const ordersCount = useMemo(() => ordersData.length, []);
 
   return (
-    <ImageBackground source={backgroundImage} style={styles.background} imageStyle={styles.backgroundImage}>
+    <ImageBackground
+      source={backgroundImage}
+      style={styles.background}
+      imageStyle={styles.backgroundImage}
+      resizeMode="cover"
+    >
       <View style={styles.overlayContainer}>
         <LinearGradient
           pointerEvents="none"
           colors={[
-            'rgba(255,255,255,0.96)',
-            'rgba(255,255,255,0.88)',
+            'rgba(255,255,255,0.98)',
+            'rgba(255,255,255,0.9)',
+            'rgba(255,255,255,0.65)',
             'rgba(255,255,255,0)',
           ]}
-          locations={[0, 0.4, 1]}
+          locations={[0, 0.3, 0.65, 1]}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={styles.gradientOverlay}
