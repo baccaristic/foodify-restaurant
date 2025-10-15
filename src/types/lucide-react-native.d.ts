@@ -14,4 +14,8 @@ declare module 'lucide-react-native' {
   export const ShoppingBag: LucideIcon;
   export const BarChart3: LucideIcon;
   export const Settings: LucideIcon;
+  export const ArrowLeft: LucideIcon;
+  export const CandyOff: LucideIcon;
+  export const MessageCircleMore: LucideIcon;
+  export const QrCode: LucideIcon;
 }
