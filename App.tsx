@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DashboardScreen } from './src/screens/DashboardScreen';
@@ -7,11 +7,9 @@ import { useAuthStore } from './src/store/authStore';
 import { colors } from './src/theme/colors';
 
 const AppContent: React.FC = () => {
-  const { user, isHydrating, hydrate } = useAuthStore((state) => ({
-    user: state.user,
-    isHydrating: state.isHydrating,
-    hydrate: state.hydrate,
-  }));
+  const user = useAuthStore((state) => state.user);
+  const isHydrating = useAuthStore((state) => state.isHydrating);
+  const hydrate = useMemo(() => useAuthStore.getState().hydrate, []);
 
   useEffect(() => {
     void hydrate();
