@@ -1,6 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+  type NavigationContainerRef,
+} from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuthStore } from '../stores';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -15,6 +19,10 @@ export const AppNavigator: React.FC = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const hydrate = useAuthStore((state) => state.hydrate);
+  const navigationRef = useRef(createNavigationContainerRef<RootStackParamList>()).current;
+  const [isNavigationReady, setNavigationReady] = useState(false);
+
+  const navigatorKey = isAuthenticated ? 'authenticated' : 'unauthenticated';
 
   useEffect(() => {
     if (!isHydrated) {
@@ -37,6 +45,19 @@ export const AppNavigator: React.FC = () => {
     void disconnectRealtime();
   }, [isAuthenticated, isHydrated]);
 
+  useEffect(() => {
+    if (!isHydrated || !isNavigationReady || !navigationRef.isReady()) {
+      return;
+    }
+
+    const targetRoute: keyof RootStackParamList = isAuthenticated ? 'Dashboard' : 'Login';
+    const currentRoute = navigationRef.getCurrentRoute();
+
+    if (currentRoute?.name !== targetRoute) {
+      navigationRef.reset({ index: 0, routes: [{ name: targetRoute }] });
+    }
+  }, [isAuthenticated, isHydrated, isNavigationReady, navigationRef]);
+
   if (!isHydrated) {
     return (
       <View style={styles.loaderContainer}>
@@ -46,8 +67,11 @@ export const AppNavigator: React.FC = () => {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <NavigationContainer
+      ref={navigationRef as unknown as NavigationContainerRef<any>}
+      onReady={() => setNavigationReady(true)}
+    >
+      <Stack.Navigator key={navigatorKey} screenOptions={{ headerShown: false }}>
         {isAuthenticated ? (
           <Stack.Screen name="Dashboard" component={DashboardScreen} />
         ) : (
