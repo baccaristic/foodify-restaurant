@@ -1,8 +1,18 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, ScrollView, StyleSheet, FlatList, Text, ImageBackground } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  View,
+  ScrollView,
+  StyleSheet,
+  FlatList,
+  Text,
+  ImageBackground,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
+import { useFocusEffect } from '@react-navigation/native';
 import { RestaurantHeader } from '../components/RestaurantHeader';
 import { SectionHeader } from '../components/SectionHeader';
 import { OrderCard } from '../components/OrderCard';
@@ -13,33 +23,80 @@ import { typography } from '../theme/typography';
 import { FooterNavigation } from '../components/FooterNavigation';
 import { Image } from 'expo-image';
 import { useAuthStore } from '../stores';
-
-type Order = {
-  id: number;
-  items: number;
-  total: number;
-};
-
-const ordersData: Order[] = [
-  { id: 28, items: 5, total: 200 },
-  { id: 27, items: 4, total: 200 },
-  { id: 26, items: 3, total: 150 },
-];
+import { restaurantApi } from '../api/restaurantApi';
+import type { OrderNotificationDTO } from '../types/api';
 
 const backgroundImage = require('../../assets/background.png');
 const closedSignImage = require('../../assets/closedSign.png');
 
 export const DashboardScreen: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
+  const [activeOrders, setActiveOrders] = useState<OrderNotificationDTO[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const logout = useAuthStore((state) => state.logout);
+  const isMountedRef = useRef(true);
 
   const handleLogout = useCallback(() => {
     void logout();
   }, [logout]);
 
+  useEffect(() => {
+    isMountedRef.current = true;
 
-  const ordersCount = useMemo(() => ordersData.length, []);
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const fetchActiveOrders = useCallback(async () => {
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setIsLoadingOrders(true);
+    setOrdersError(null);
+
+    try {
+      const orders = await restaurantApi.getActiveOrders();
+
+      if (isMountedRef.current) {
+        setActiveOrders(orders);
+      }
+    } catch (error) {
+      if (isMountedRef.current) {
+        setActiveOrders([]);
+        setOrdersError('Unable to load active orders.');
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoadingOrders(false);
+      }
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void fetchActiveOrders();
+    }, [fetchActiveOrders])
+  );
+
+  const handleReloadOrders = useCallback(() => {
+    void fetchActiveOrders();
+  }, [fetchActiveOrders]);
+
+  const ordersCount = useMemo(() => activeOrders.length, [activeOrders]);
   const displayedOrderCount = isOpen ? ordersCount : 0;
+  const renderOrderCard = useCallback(
+    ({ item }: { item: OrderNotificationDTO }) => {
+      const itemsTotal = item.items.reduce((total, orderItem) => total + orderItem.quantity, 0);
+
+      return (
+        <OrderCard orderNumber={item.orderId} items={itemsTotal} total={item.payment.total} />
+      );
+    },
+    []
+  );
 
   return (
     <ImageBackground
@@ -68,19 +125,42 @@ export const DashboardScreen: React.FC = () => {
               <View style={styles.section}>
                 <SectionHeader
                   title="Active Orders"
-                  trailing={<OrderCountBadge value={ordersCount} />}
+                  trailing={<OrderCountBadge value={displayedOrderCount} />}
                 />
                 {isOpen ? (
-                  <FlatList
-                    data={ordersData}
-                    horizontal
-                    keyExtractor={(item) => item.id.toString()}
-                    showsHorizontalScrollIndicator={false}
-                    ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
-                    renderItem={({ item }) => (
-                      <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
+                  <View>
+                    {isLoadingOrders ? (
+                      <View style={styles.ordersPlaceholder}>
+                        <ActivityIndicator color={colors.primary} />
+                      </View>
+                    ) : ordersError ? (
+                      <View style={styles.ordersPlaceholder}>
+                        <Text style={styles.errorText}>{ordersError}</Text>
+                        <TouchableOpacity
+                          onPress={handleReloadOrders}
+                          style={styles.retryButton}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.retryButtonText}>Try again</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : activeOrders.length === 0 ? (
+                      <View style={styles.ordersPlaceholder}>
+                        <Text style={styles.emptyText}>No active orders right now.</Text>
+                      </View>
+                    ) : (
+                      <FlatList
+                        data={activeOrders}
+                        horizontal
+                        keyExtractor={(item) => item.orderId.toString()}
+                        showsHorizontalScrollIndicator={false}
+                        ItemSeparatorComponent={() => (
+                          <View style={{ width: moderateScale(12) }} />
+                        )}
+                        renderItem={renderOrderCard}
+                      />
                     )}
-                  />
+                  </View>
                 ) : (
                   <ClosedRestaurantNotice />
                 )}
@@ -161,6 +241,38 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: moderateScale(24),
+  },
+  ordersPlaceholder: {
+    width: '100%',
+    minHeight: moderateScale(140),
+    borderRadius: moderateScale(20),
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(24),
+  },
+  errorText: {
+    ...typography.bodyMedium,
+    textAlign: 'center',
+    color: '#E53935',
+    marginBottom: moderateScale(16),
+  },
+  retryButton: {
+    paddingHorizontal: moderateScale(20),
+    paddingVertical: moderateScale(10),
+    borderRadius: moderateScale(12),
+    backgroundColor: colors.primary,
+  },
+  retryButtonText: {
+    ...typography.button,
+  },
+  emptyText: {
+    ...typography.bodyMedium,
+    textAlign: 'center',
+    color: colors.textSecondary,
   },
   quickActionsRow: {
     flexDirection: 'row',

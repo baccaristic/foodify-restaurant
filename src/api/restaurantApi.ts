@@ -26,8 +26,10 @@ const serializeMenuPayload = (
 };
 
 export const restaurantApi = {
-  async getCurrentOrders(): Promise<OrderNotificationDTO[]> {
-    const response = await httpClient.get<OrderNotificationDTO[]>('/api/restaurant/my-orders');
+  async getActiveOrders(): Promise<OrderNotificationDTO[]> {
+    const response = await httpClient.get<OrderNotificationDTO[]>(
+      '/api/restaurant/my-active-orders'
+    );
     return response.data;
   },
 
