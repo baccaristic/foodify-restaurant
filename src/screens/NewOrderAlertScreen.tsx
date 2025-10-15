@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Audio } from 'expo-av';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { moderateScale } from 'react-native-size-matters';
@@ -22,12 +23,35 @@ import type { OrderNotificationDTO } from '../types/api';
 import { restaurantApi } from '../api/restaurantApi';
 
 const bellImage = require('../../assets/bell.png');
+const alertSound = require('../../assets/sound/newOrder.mp3');
 
 export const NewOrderAlertScreen: React.FC = () => {
   const order = useOrdersStore((state) => state.activeAlert);
   const clearActiveAlert = useOrdersStore((state) => state.clearActiveAlert);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [isAccepting, setIsAccepting] = useState(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  const stopAlertSound = useCallback(async () => {
+    const current = soundRef.current;
+    if (!current) {
+      return;
+    }
+
+    soundRef.current = null;
+
+    try {
+      await current.stopAsync();
+    } catch (error) {
+      // no-op: stopping may fail if playback already ended
+    }
+
+    try {
+      await current.unloadAsync();
+    } catch (error) {
+      // no-op: unloading failure should not block UI flow
+    }
+  }, []);
 
   useEffect(() => {
     if (!order) {
@@ -36,6 +60,44 @@ export const NewOrderAlertScreen: React.FC = () => {
       }
     }
   }, [navigation, order]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const setupSound = async () => {
+      if (!order) {
+        await stopAlertSound();
+        return;
+      }
+
+      try {
+        await stopAlertSound();
+
+        const { sound } = await Audio.Sound.createAsync(alertSound, {
+          shouldPlay: true,
+          isLooping: true,
+        });
+
+        soundRef.current = sound;
+
+        if (!isMounted) {
+          await stopAlertSound();
+          return;
+        }
+
+        await sound.playAsync();
+      } catch (error) {
+        console.warn('Failed to play new order alert sound', error);
+      }
+    };
+
+    void setupSound();
+
+    return () => {
+      isMounted = false;
+      void stopAlertSound();
+    };
+  }, [order, stopAlertSound]);
 
   const handleDismiss = useCallback(() => {
     clearActiveAlert();
