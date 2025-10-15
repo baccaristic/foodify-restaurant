@@ -3,6 +3,10 @@ import { View, Text, StyleSheet } from 'react-native';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+//@ts-ignore
+import MenuIcon from '../../assets/icons/menu.svg';
+//@ts-ignore
+import OrdersIcon from '../../assets/icons/orders.svg';
 
 type Props = {
   title: string;
@@ -10,32 +14,17 @@ type Props = {
 };
 
 export const QuickActionCard: React.FC<Props> = ({ title, variant = 'menu' }) => {
+  const Icon = variant === 'menu' ? MenuIcon : OrdersIcon;
+
   return (
     <View style={styles.container}>
-      <View style={styles.iconWrapper}>{variant === 'menu' ? <MenuIcon /> : <OrdersIcon />}</View>
+      <View style={styles.iconWrapper}>
+        <Icon width={moderateScale(32)} height={moderateScale(48)} />
+      </View>
       <Text style={styles.title}>{title}</Text>
     </View>
   );
 };
-
-const MenuIcon = () => (
-  <View style={styles.menuIconContainer}>
-    <View style={[styles.menuLine, styles.menuLineSpacing]} />
-    <View style={[styles.menuLine, styles.menuLineShort, styles.menuLineSpacing]} />
-    <View style={styles.menuLine} />
-  </View>
-);
-
-const OrdersIcon = () => (
-  <View style={styles.ordersIconContainer}>
-    <View style={styles.ordersReceipt}>
-      <View style={[styles.ordersLine, styles.ordersLineSpacing]} />
-      <View style={[styles.ordersLine, styles.ordersLineShort, styles.ordersLineSpacing]} />
-      <View style={styles.ordersLine} />
-    </View>
-    <View style={styles.ordersStub} />
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: {
@@ -50,7 +39,6 @@ const styles = StyleSheet.create({
     width: moderateScale(48),
     height: moderateScale(48),
     borderRadius: moderateScale(12),
-    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -59,50 +47,5 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     marginTop: moderateScale(12),
-  },
-  menuIconContainer: {
-    alignItems: 'center',
-  },
-  menuLine: {
-    width: moderateScale(28),
-    height: moderateScale(3),
-    backgroundColor: colors.primary,
-    borderRadius: moderateScale(2),
-  },
-  menuLineShort: {
-    width: moderateScale(20),
-  },
-  menuLineSpacing: {
-    marginBottom: moderateScale(6),
-  },
-  ordersIconContainer: {
-    alignItems: 'center',
-  },
-  ordersReceipt: {
-    width: moderateScale(32),
-    borderRadius: moderateScale(6),
-    backgroundColor: colors.white,
-    borderWidth: moderateScale(2),
-    borderColor: colors.primary,
-    paddingVertical: moderateScale(6),
-    paddingHorizontal: moderateScale(6),
-  },
-  ordersLine: {
-    height: moderateScale(3),
-    backgroundColor: colors.primary,
-    borderRadius: moderateScale(2),
-  },
-  ordersLineShort: {
-    width: '70%',
-  },
-  ordersLineSpacing: {
-    marginBottom: moderateScale(4),
-  },
-  ordersStub: {
-    width: moderateScale(16),
-    height: moderateScale(6),
-    borderRadius: moderateScale(3),
-    backgroundColor: colors.primary,
-    marginTop: moderateScale(6),
   },
 });

@@ -3,6 +3,7 @@ import { View, Text, Switch, StyleSheet } from 'react-native';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { Image } from 'expo-image';
 
 type Props = {
   name: string;
@@ -15,7 +16,7 @@ export const RestaurantHeader: React.FC<Props> = ({ name, isOpen, onToggle }) =>
     <View style={styles.container}>
       <View style={styles.logoRow}>
         <View style={styles.logoBadge}>
-          <Text style={styles.logoText}>TORII</Text>
+          <Image source={require('../../assets/torri.png')} contentFit='contain' style={{ width: '100%', height: '100%', borderRadius: moderateScale(24) }}/>
         </View>
         <Text style={styles.restaurantName}>{name}</Text>
       </View>
@@ -50,9 +51,9 @@ const styles = StyleSheet.create({
     width: moderateScale(48),
     height: moderateScale(48),
     borderRadius: moderateScale(24),
-    backgroundColor: colors.white,
-    borderWidth: moderateScale(2),
+    borderWidth: 2,
     borderColor: colors.primary,
+    
     alignItems: 'center',
     justifyContent: 'center',
   },
