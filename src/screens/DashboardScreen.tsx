@@ -11,6 +11,7 @@ import { StatisticCard } from '../components/StatisticCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { FooterNavigation } from '../components/FooterNavigation';
+import { Image } from 'expo-image';
 
 type Order = {
   id: number;
@@ -25,11 +26,14 @@ const ordersData: Order[] = [
 ];
 
 const backgroundImage = require('../../assets/background.png');
+const closedSignImage = require('../../assets/closedSign.png');
 
 export const DashboardScreen: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
 
+
   const ordersCount = useMemo(() => ordersData.length, []);
+  const displayedOrderCount = isOpen ? ordersCount : 0;
 
   return (
     <ImageBackground
@@ -55,16 +59,20 @@ export const DashboardScreen: React.FC = () => {
                   title="Active Orders"
                   trailing={<OrderCountBadge value={ordersCount} />}
                 />
-                <FlatList
-                  data={ordersData}
-                  horizontal
-                  keyExtractor={(item) => item.id.toString()}
-                  showsHorizontalScrollIndicator={false}
-                  ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
-                  renderItem={({ item }) => (
-                    <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
-                  )}
-                />
+                {isOpen ? (
+                  <FlatList
+                    data={ordersData}
+                    horizontal
+                    keyExtractor={(item) => item.id.toString()}
+                    showsHorizontalScrollIndicator={false}
+                    ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
+                    renderItem={({ item }) => (
+                      <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
+                    )}
+                  />
+                ) : (
+                  <ClosedRestaurantNotice />
+                )}
               </View>
 
               <View style={styles.section}>
@@ -91,6 +99,18 @@ export const DashboardScreen: React.FC = () => {
     </ImageBackground>
   );
 };
+
+const ClosedRestaurantNotice: React.FC = () => (
+  <View style={styles.closedNoticeContainer}>
+    <View style={styles.closedCard}>
+      <Image source={closedSignImage} style={styles.closedImage} resizeMode="contain" />
+      <Text style={styles.closedTitle}>Your restaurant is closed</Text>
+      <Text style={styles.closedSubtitle}>
+        Open your hours to start receiving orders again!
+      </Text>
+    </View>
+  </View>
+);
 
 const OrderCountBadge: React.FC<{ value: number }> = ({ value }) => (
   <View style={styles.badgeContainer}>
@@ -157,5 +177,42 @@ const styles = StyleSheet.create({
   badgeText: {
     ...typography.inverseTitle,
     fontSize: moderateScale(20),
+  },
+  closedNoticeContainer: {
+    marginTop: moderateScale(24),
+    alignItems: 'center',
+  },
+  closedCard: {
+    width: '100%',
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(20),
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    paddingVertical: moderateScale(32),
+    paddingHorizontal: moderateScale(24),
+    shadowColor: colors.navy,
+    shadowOpacity: 0.05,
+    shadowRadius: moderateScale(12),
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  closedImage: {
+    width: '60%',
+    aspectRatio: 4 / 3,
+    marginBottom: moderateScale(24),
+  },
+  closedTitle: {
+    ...typography.bodyStrong,
+    fontSize: moderateScale(18),
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    color: colors.navy,
+    marginBottom: moderateScale(12),
+  },
+  closedSubtitle: {
+    ...typography.bodyMedium,
+    textAlign: 'center',
+    color: colors.textSecondary,
   },
 });
