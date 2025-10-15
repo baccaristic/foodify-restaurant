@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { RestaurantHeader } from '../components/RestaurantHeader';
 import { SectionHeader } from '../components/SectionHeader';
 import { OrderCard } from '../components/OrderCard';
@@ -25,6 +25,8 @@ import { Image } from 'expo-image';
 import { useAuthStore } from '../stores';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderNotificationDTO } from '../types/api';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
 
 const backgroundImage = require('../../assets/background.png');
 const closedSignImage = require('../../assets/closedSign.png');
@@ -36,6 +38,7 @@ export const DashboardScreen: React.FC = () => {
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const logout = useAuthStore((state) => state.logout);
   const isMountedRef = useRef(true);
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   const handleLogout = useCallback(() => {
     void logout();
@@ -91,11 +94,20 @@ export const DashboardScreen: React.FC = () => {
     ({ item }: { item: OrderNotificationDTO }) => {
       const itemsTotal = item.items.reduce((total, orderItem) => total + orderItem.quantity, 0);
 
+      const handlePress = () => {
+        navigation.navigate('OrderDetails', { order: item });
+      };
+
       return (
-        <OrderCard orderNumber={item.orderId} items={itemsTotal} total={item.payment.total} />
+        <OrderCard
+          orderNumber={item.orderId}
+          items={itemsTotal}
+          total={item.payment.total}
+          onPress={handlePress}
+        />
       );
     },
-    []
+    [navigation]
   );
 
   return (
