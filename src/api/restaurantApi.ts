@@ -28,40 +28,40 @@ const serializeMenuPayload = (
 export const restaurantApi = {
   async getActiveOrders(): Promise<OrderNotificationDTO[]> {
     const response = await httpClient.get<OrderNotificationDTO[]>(
-      '/api/restaurant/my-active-orders'
+      '/restaurant/my-active-orders'
     );
     return response.data;
   },
 
   async getOrder(orderId: number): Promise<OrderNotificationDTO | null> {
     const response = await httpClient.get<OrderNotificationDTO | null>(
-      `/api/restaurant/order/${orderId}`
+      `/restaurant/order/${orderId}`
     );
     return response.data;
   },
 
   async acceptOrder(orderId: number): Promise<OrderNotificationDTO> {
     const response = await httpClient.post<OrderNotificationDTO>(
-      `/api/restaurant/accept-order/${orderId}`
+      `/restaurant/accept-order/${orderId}`
     );
     return response.data;
   },
 
   async markOrderReady(orderId: number): Promise<OrderNotificationDTO> {
     const response = await httpClient.post<OrderNotificationDTO>(
-      `/api/restaurant/order/ready/${orderId}`
+      `/restaurant/order/ready/${orderId}`
     );
     return response.data;
   },
 
   async getMenu(): Promise<MenuItemDTO[]> {
-    const response = await httpClient.get<MenuItemDTO[]>('/api/restaurant/my-menu');
+    const response = await httpClient.get<MenuItemDTO[]>('/restaurant/my-menu');
     return response.data;
   },
 
   async addMenuItem(payload: MenuItemRequestDTO, files?: UploadableAsset[]): Promise<MenuItemDTO> {
     const formData = serializeMenuPayload(payload, files);
-    const response = await httpClient.post<MenuItemDTO>('/api/restaurant/addMenu', formData, {
+    const response = await httpClient.post<MenuItemDTO>('/restaurant/addMenu', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
@@ -73,7 +73,7 @@ export const restaurantApi = {
     files?: UploadableAsset[]
   ): Promise<MenuItemDTO> {
     const formData = serializeMenuPayload(payload, files);
-    const response = await httpClient.put<MenuItemDTO>(`/api/restaurant/menu/${menuId}`, formData, {
+    const response = await httpClient.put<MenuItemDTO>(`/restaurant/menu/${menuId}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;

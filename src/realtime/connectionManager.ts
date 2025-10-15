@@ -15,6 +15,7 @@ export const connectRealtime = (
   const client = createRestaurantRealtimeClient(callbacks);
   realtimeClient = client;
   client.activate();
+  console.log(client)
 
   return client;
 };
