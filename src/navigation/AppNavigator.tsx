@@ -14,6 +14,7 @@ import { colors } from '../theme/colors';
 import { connectRealtime, disconnectRealtime } from '../realtime';
 import type { RootStackParamList } from './types';
 import type { OrderNotificationDTO } from '../types/api';
+import { OrderDetailsScreen } from '../screens/OrderDetailsScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -98,6 +99,7 @@ export const AppNavigator: React.FC = () => {
               component={NewOrderAlertScreen}
               options={{ presentation: 'transparentModal', cardStyle: styles.modalCard }}
             />
+            <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
           </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
