@@ -10,6 +10,7 @@ import { QuickActionCard } from '../components/QuickActionCard';
 import { StatisticCard } from '../components/StatisticCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { FooterNavigation } from '../components/FooterNavigation';
 
 type Order = {
   id: number;
@@ -41,46 +42,50 @@ export const DashboardScreen: React.FC = () => {
         <View pointerEvents="none" style={styles.tintOverlay} />
         <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
-          <ScrollView
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-          >
-            <RestaurantHeader name="Torii Sushi" isOpen={isOpen} onToggle={setIsOpen} />
+          <View style={styles.screenContent}>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+            >
+              <RestaurantHeader name="Torii Sushi" isOpen={isOpen} onToggle={setIsOpen} />
 
-            <View style={styles.section}>
-              <SectionHeader
-                title="Active Orders"
-                trailing={<OrderCountBadge value={ordersCount} />}
-              />
-              <FlatList
-                data={ordersData}
-                horizontal
-                keyExtractor={(item) => item.id.toString()}
-                showsHorizontalScrollIndicator={false}
-                ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
-                renderItem={({ item }) => (
-                  <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
-                )}
-              />
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.quickActionsRow}>
-                <QuickActionCard title="My Menu" variant="menu" />
-                <View style={styles.quickActionSpacer} />
-                <QuickActionCard title="My Orders" variant="orders" />
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Active Orders"
+                  trailing={<OrderCountBadge value={ordersCount} />}
+                />
+                <FlatList
+                  data={ordersData}
+                  horizontal
+                  keyExtractor={(item) => item.id.toString()}
+                  showsHorizontalScrollIndicator={false}
+                  ItemSeparatorComponent={() => <View style={{ width: moderateScale(12) }} />}
+                  renderItem={({ item }) => (
+                    <OrderCard orderNumber={item.id} items={item.items} total={item.total} />
+                  )}
+                />
               </View>
-            </View>
 
-            <View style={styles.section}>
-              <SectionHeader title="Performance Summary" />
-              <View style={styles.statsRow}>
-                <StatisticCard title="Orders Completed" value="25" change="+25%" />
-                <View style={styles.statSpacer} />
-                <StatisticCard title="Revenue" value="532" unit="DT" change="+25%" />
+              <View style={styles.section}>
+                <View style={styles.quickActionsRow}>
+                  <QuickActionCard title="My Menu" variant="menu" />
+                  <View style={styles.quickActionSpacer} />
+                  <QuickActionCard title="My Orders" variant="orders" />
+                </View>
               </View>
-            </View>
-          </ScrollView>
+
+              <View style={styles.section}>
+                <SectionHeader title="Performance Summary" />
+                <View style={styles.statsRow}>
+                  <StatisticCard title="Orders Completed" value="25" change="+25%" />
+                  <View style={styles.statSpacer} />
+                  <StatisticCard title="Revenue" value="532" unit="DT" change="+25%" />
+                </View>
+              </View>
+            </ScrollView>
+            <FooterNavigation />
+          </View>
         </SafeAreaView>
       </View>
     </ImageBackground>
@@ -111,9 +116,16 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  screenContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  scroll: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: moderateScale(20),
-    paddingBottom: moderateScale(32),
+    paddingBottom: moderateScale(24),
     paddingTop: moderateScale(12),
   },
   section: {
