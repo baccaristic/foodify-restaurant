@@ -7,6 +7,7 @@ import type { OrderNotificationDTO } from '../types/api';
 export interface RestaurantRealtimeCallbacks {
   onSnapshot?: (orders: OrderNotificationDTO[]) => void;
   onOrderUpdate?: (order: OrderNotificationDTO) => void;
+  onNewOrder?: (order: OrderNotificationDTO) => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
 }
@@ -37,6 +38,7 @@ export const createRestaurantRealtimeClient = (
 
   let snapshotSubscription: StompSubscription | null = null;
   let updateSubscription: StompSubscription | null = null;
+  let newOrderSubscription: StompSubscription | null = null;
 
   client.onConnect = () => {
     snapshotSubscription = client.subscribe('/user/queue/restaurant/orders/snapshot', (message) => {
@@ -56,6 +58,15 @@ export const createRestaurantRealtimeClient = (
         callbacks.onError?.(error as Error);
       }
     });
+
+    newOrderSubscription = client.subscribe('/user/queue/restaurant/orders/new', (message) => {
+      try {
+        const payload = parseMessage<OrderNotificationDTO>(message);
+        callbacks.onNewOrder?.(payload);
+      } catch (error) {
+        callbacks.onError?.(error as Error);
+      }
+    });
   };
 
   client.onStompError = (frame) => {
@@ -66,6 +77,7 @@ export const createRestaurantRealtimeClient = (
   client.onWebSocketClose = () => {
     snapshotSubscription?.unsubscribe();
     updateSubscription?.unsubscribe();
+    newOrderSubscription?.unsubscribe();
     callbacks.onDisconnect?.();
   };
 
@@ -74,6 +86,8 @@ export const createRestaurantRealtimeClient = (
     snapshotSubscription = null;
     updateSubscription?.unsubscribe();
     updateSubscription = null;
+    newOrderSubscription?.unsubscribe();
+    newOrderSubscription = null;
     callbacks.onDisconnect?.();
   };
 
