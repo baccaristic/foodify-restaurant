@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores';
 import { LoginScreen } from '../screens/LoginScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { colors } from '../theme/colors';
+import { connectRealtime, disconnectRealtime } from '../realtime';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -20,6 +21,21 @@ export const AppNavigator: React.FC = () => {
       void hydrate();
     }
   }, [hydrate, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    if (isAuthenticated) {
+      connectRealtime();
+      return () => {
+        void disconnectRealtime();
+      };
+    }
+
+    void disconnectRealtime();
+  }, [isAuthenticated, isHydrated]);
 
   if (!isHydrated) {
     return (
