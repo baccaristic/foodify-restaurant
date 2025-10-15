@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import {
   NavigationContainer,
@@ -6,12 +6,14 @@ import {
   type NavigationContainerRef,
 } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useAuthStore } from '../stores';
+import { useAuthStore, useOrdersStore } from '../stores';
 import { LoginScreen } from '../screens/LoginScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
+import { NewOrderAlertScreen } from '../screens/NewOrderAlertScreen';
 import { colors } from '../theme/colors';
 import { connectRealtime, disconnectRealtime } from '../realtime';
 import type { RootStackParamList } from './types';
+import type { OrderNotificationDTO } from '../types/api';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -23,6 +25,19 @@ export const AppNavigator: React.FC = () => {
   const [isNavigationReady, setNavigationReady] = useState(false);
 
   const navigatorKey = isAuthenticated ? 'authenticated' : 'unauthenticated';
+
+  const pushAlert = useOrdersStore((state) => state.pushAlert);
+  const resetAlerts = useOrdersStore((state) => state.resetAlerts);
+
+  const handleNewOrder = useCallback(
+    (order: OrderNotificationDTO) => {
+      pushAlert(order);
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('NewOrderAlert');
+      }
+    },
+    [navigationRef, pushAlert]
+  );
 
   useEffect(() => {
     if (!isHydrated) {
@@ -36,14 +51,17 @@ export const AppNavigator: React.FC = () => {
     }
 
     if (isAuthenticated) {
-      connectRealtime();
+      connectRealtime({
+        onNewOrder: handleNewOrder,
+      });
       return () => {
         void disconnectRealtime();
       };
     }
 
     void disconnectRealtime();
-  }, [isAuthenticated, isHydrated]);
+    resetAlerts();
+  }, [handleNewOrder, isAuthenticated, isHydrated, resetAlerts]);
 
   useEffect(() => {
     if (!isHydrated || !isNavigationReady || !navigationRef.isReady()) {
@@ -73,7 +91,14 @@ export const AppNavigator: React.FC = () => {
     >
       <Stack.Navigator key={navigatorKey} screenOptions={{ headerShown: false }}>
         {isAuthenticated ? (
-          <Stack.Screen name="Dashboard" component={DashboardScreen} />
+          <>
+            <Stack.Screen name="Dashboard" component={DashboardScreen} />
+            <Stack.Screen
+              name="NewOrderAlert"
+              component={NewOrderAlertScreen}
+              options={{ presentation: 'transparentModal', cardStyle: styles.modalCard }}
+            />
+          </>
         ) : (
           <Stack.Screen name="Login" component={LoginScreen} />
         )}
@@ -88,5 +113,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
+  },
+  modalCard: {
+    backgroundColor: 'transparent',
   },
 });

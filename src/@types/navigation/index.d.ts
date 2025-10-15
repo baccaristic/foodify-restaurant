@@ -5,6 +5,7 @@ declare module '@react-navigation/native' {
     reset: (state: { index: number; routes: Array<{ name: keyof T; params?: any }> }) => void;
     getCurrentRoute: () => { name: keyof T } | undefined;
     isReady: () => boolean;
+    navigate: (name: keyof T, params?: any) => void;
   };
 
   export interface NavigationContainerProps {
@@ -25,9 +26,22 @@ declare module '@react-navigation/stack' {
   import * as React from 'react';
 
   export type StackNavigationOptions = Record<string, unknown>;
+  export type StackNavigationProp<T> = {
+    navigate: (name: keyof T, params?: any) => void;
+    goBack: () => void;
+    canGoBack: () => boolean;
+  };
 
   export function createStackNavigator<T>(): {
-    Navigator: React.ComponentType<React.PropsWithChildren<{ screenOptions?: StackNavigationOptions }>>;
-    Screen: React.ComponentType<React.PropsWithChildren<{ name: keyof T; component: React.ComponentType<any> }>>;
+    Navigator: React.ComponentType<
+      React.PropsWithChildren<{ screenOptions?: StackNavigationOptions }>
+    >;
+    Screen: React.ComponentType<
+      React.PropsWithChildren<{
+        name: keyof T;
+        component: React.ComponentType<any>;
+        options?: StackNavigationOptions;
+      }>
+    >;
   };
 }
