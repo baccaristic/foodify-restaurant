@@ -1,0 +1,17 @@
+declare module 'lucide-react-native' {
+  import type { FC } from 'react';
+  import type { SvgProps } from 'react-native-svg';
+
+  export interface LucideProps extends SvgProps {
+    color?: string;
+    size?: number;
+    strokeWidth?: number;
+  }
+
+  export type LucideIcon = FC<LucideProps>;
+
+  export const Home: LucideIcon;
+  export const ShoppingBag: LucideIcon;
+  export const BarChart3: LucideIcon;
+  export const Settings: LucideIcon;
+}

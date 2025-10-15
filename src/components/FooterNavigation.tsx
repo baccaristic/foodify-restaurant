@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, Polyline } from 'react-native-svg';
+import type { LucideIcon } from 'lucide-react-native';
+import { BarChart3, Home, Settings, ShoppingBag } from 'lucide-react-native';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -8,78 +9,16 @@ import { typography } from '../theme/typography';
 type NavItem = {
   key: string;
   label: string;
-  icon: React.FC<{ active: boolean }>;
+  icon: LucideIcon;
   active?: boolean;
   badgeCount?: number;
 };
 
-const HomeIcon: React.FC<{ active: boolean }> = ({ active }) => (
-  <Svg width={moderateScale(24)} height={moderateScale(24)} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M4.5 10.75L12 4l7.5 6.75v9h-5v-5h-5v5h-5z"
-      fill={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-    />
-  </Svg>
-);
-
-const OrdersIcon: React.FC<{ active: boolean }> = ({ active }) => (
-  <Svg width={moderateScale(24)} height={moderateScale(24)} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M6 5.5h12l-1 13H7l-1-13z"
-      stroke={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-      strokeWidth={1.5}
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M9 5.5V4a3 3 0 013-3 3 3 0 013 3v1.5"
-      stroke={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
-
-const AnalyticsIcon: React.FC<{ active: boolean }> = ({ active }) => (
-  <Svg width={moderateScale(24)} height={moderateScale(24)} viewBox="0 0 24 24" fill="none">
-    <Polyline
-      points="4 16 9 11 13 14 20 7"
-      stroke={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-      strokeWidth={1.7}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Circle
-      cx={20}
-      cy={7}
-      r={1.2}
-      fill={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-    />
-  </Svg>
-);
-
-const SettingsIcon: React.FC<{ active: boolean }> = ({ active }) => (
-  <Svg width={moderateScale(24)} height={moderateScale(24)} viewBox="0 0 24 24" fill="none">
-    <Circle
-      cx={12}
-      cy={12}
-      r={3.2}
-      stroke={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-      strokeWidth={1.5}
-    />
-    <Path
-      d="M12 2v3M12 19v3M4.9 4.9l2.12 2.12M16.98 16.98l2.12 2.12M2 12h3M19 12h3M4.9 19.1l2.12-2.12M16.98 7.02l2.12-2.12"
-      stroke={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
-      strokeWidth={1.5}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
-
 const navItems: NavItem[] = [
-  { key: 'home', label: 'Home', icon: HomeIcon, active: true },
-  { key: 'orders', label: 'Orders', icon: OrdersIcon, badgeCount: 3 },
-  { key: 'analytics', label: 'Analytics', icon: AnalyticsIcon },
-  { key: 'settings', label: 'Settings', icon: SettingsIcon },
+  { key: 'home', label: 'Home', icon: Home, active: true },
+  { key: 'orders', label: 'Orders', icon: ShoppingBag, badgeCount: 3 },
+  { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export const FooterNavigation: React.FC = () => (
@@ -87,7 +26,11 @@ export const FooterNavigation: React.FC = () => (
     {navItems.map(({ key, label, icon: IconComponent, active, badgeCount }) => (
       <View key={key} style={styles.item}>
         <View style={styles.iconWrapper}>
-          <IconComponent active={Boolean(active)} />
+          <IconComponent
+            color={active ? colors.white : 'rgba(255, 255, 255, 0.7)'}
+            size={moderateScale(24)}
+            strokeWidth={active ? 2.4 : 2}
+          />
           {badgeCount ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{badgeCount}</Text>
