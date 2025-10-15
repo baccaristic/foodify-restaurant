@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Switch, StyleSheet } from 'react-native';
+import { View, Text, Switch, StyleSheet, Pressable } from 'react-native';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -9,9 +9,10 @@ type Props = {
   name: string;
   isOpen: boolean;
   onToggle: (value: boolean) => void;
+  onLogout?: () => void;
 };
 
-export const RestaurantHeader: React.FC<Props> = ({ name, isOpen, onToggle }) => {
+export const RestaurantHeader: React.FC<Props> = ({ name, isOpen, onToggle, onLogout }) => {
   return (
     <View style={styles.container}>
       <View style={styles.logoRow}>
@@ -20,17 +21,24 @@ export const RestaurantHeader: React.FC<Props> = ({ name, isOpen, onToggle }) =>
         </View>
         <Text style={styles.restaurantName}>{name}</Text>
       </View>
-      <View style={styles.statusContainer}>
-        <Text style={[styles.statusLabel, isOpen ? styles.statusOpen : styles.statusClosed]}>
-          {isOpen ? 'Open' : 'Closed'}
-        </Text>
-        <Switch
-          value={isOpen}
-          onValueChange={onToggle}
-          trackColor={{ false: colors.gray, true: colors.primary }}
-          thumbColor={colors.white}
-          style={styles.statusSwitch}
-        />
+      <View style={styles.actionsContainer}>
+        <View style={styles.statusContainer}>
+          <Text style={[styles.statusLabel, isOpen ? styles.statusOpen : styles.statusClosed]}>
+            {isOpen ? 'Open' : 'Closed'}
+          </Text>
+          <Switch
+            value={isOpen}
+            onValueChange={onToggle}
+            trackColor={{ false: colors.gray, true: colors.primary }}
+            thumbColor={colors.white}
+            style={styles.statusSwitch}
+          />
+        </View>
+        {onLogout ? (
+          <Pressable accessibilityRole="button" onPress={onLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -70,6 +78,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   statusLabel: {
     ...typography.bodyStrong,
   },
@@ -81,5 +93,16 @@ const styles = StyleSheet.create({
   },
   statusSwitch: {
     marginLeft: moderateScale(12),
+  },
+  logoutButton: {
+    marginLeft: moderateScale(16),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(8),
+    borderRadius: moderateScale(16),
+    backgroundColor: colors.mutedBlack,
+  },
+  logoutButtonText: {
+    ...typography.bodyStrong,
+    color: colors.white,
   },
 });

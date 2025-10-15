@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, ScrollView, StyleSheet, FlatList, Text, ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +12,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { FooterNavigation } from '../components/FooterNavigation';
 import { Image } from 'expo-image';
+import { useAuthStore } from '../stores';
 
 type Order = {
   id: number;
@@ -30,6 +31,11 @@ const closedSignImage = require('../../assets/closedSign.png');
 
 export const DashboardScreen: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true);
+  const logout = useAuthStore((state) => state.logout);
+
+  const handleLogout = useCallback(() => {
+    void logout();
+  }, [logout]);
 
 
   const ordersCount = useMemo(() => ordersData.length, []);
@@ -52,7 +58,12 @@ export const DashboardScreen: React.FC = () => {
               contentContainerStyle={styles.content}
               showsVerticalScrollIndicator={false}
             >
-              <RestaurantHeader name="Torii Sushi" isOpen={isOpen} onToggle={setIsOpen} />
+              <RestaurantHeader
+                name="Torii Sushi"
+                isOpen={isOpen}
+                onToggle={setIsOpen}
+                onLogout={handleLogout}
+              />
 
               <View style={styles.section}>
                 <SectionHeader
