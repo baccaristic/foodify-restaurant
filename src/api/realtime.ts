@@ -7,10 +7,10 @@ import type { OrderNotificationDTO } from '../types/api';
 export interface RestaurantRealtimeCallbacks {
   onSnapshot?: (orders: OrderNotificationDTO[]) => void;
   onOrderUpdate?: (order: OrderNotificationDTO) => void;
+  onNewOrder?: (order: OrderNotificationDTO) => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
 }
-
 const parseMessage = <T>(message: IMessage): T => {
   try {
     return JSON.parse(message.body) as T;
@@ -25,11 +25,11 @@ export const createRestaurantRealtimeClient = (
   const client = new Client({
     webSocketFactory: () => new SockJS(WS_BASE_URL),
     reconnectDelay: 5000,
-    debug: undefined,
+    debug: (msg) => console.log('[STOMP]', msg),
   });
+  const { accessToken} = useAuthStore.getState();
 
   client.beforeConnect = () => {
-    const { accessToken } = useAuthStore.getState();
     client.connectHeaders = accessToken
       ? { Authorization: `Bearer ${accessToken}` }
       : {};
@@ -37,10 +37,14 @@ export const createRestaurantRealtimeClient = (
 
   let snapshotSubscription: StompSubscription | null = null;
   let updateSubscription: StompSubscription | null = null;
+  let newOrderSubscription: StompSubscription | null = null;
 
   client.onConnect = () => {
-    snapshotSubscription = client.subscribe('/user/queue/restaurant/orders/snapshot', (message) => {
+    const {  user } = useAuthStore.getState();
+    console.log('connected to ws')
+    snapshotSubscription = client.subscribe(`/user/${user?.id}/queue/restaurant/orders/snapshot`, (message) => {
       try {
+        console.log(message);
         const payload = parseMessage<OrderNotificationDTO[]>(message);
         callbacks.onSnapshot?.(payload);
       } catch (error) {
@@ -48,10 +52,21 @@ export const createRestaurantRealtimeClient = (
       }
     });
 
-    updateSubscription = client.subscribe('/user/queue/restaurant/orders', (message) => {
+    updateSubscription = client.subscribe(`/user/${user?.id}/queue/restaurant/orders`, (message) => {
       try {
+        console.log(message)
         const payload = parseMessage<OrderNotificationDTO>(message);
         callbacks.onOrderUpdate?.(payload);
+      } catch (error) {
+        callbacks.onError?.(error as Error);
+      }
+    });
+
+    newOrderSubscription = client.subscribe(`/user/${user?.id}/queue/restaurant/orders/new`, (message) => {
+      try {
+        const payload = parseMessage<OrderNotificationDTO>(message);
+        console.log(message)
+        callbacks.onNewOrder?.(payload);
       } catch (error) {
         callbacks.onError?.(error as Error);
       }
@@ -66,6 +81,7 @@ export const createRestaurantRealtimeClient = (
   client.onWebSocketClose = () => {
     snapshotSubscription?.unsubscribe();
     updateSubscription?.unsubscribe();
+    newOrderSubscription?.unsubscribe();
     callbacks.onDisconnect?.();
   };
 
@@ -74,6 +90,8 @@ export const createRestaurantRealtimeClient = (
     snapshotSubscription = null;
     updateSubscription?.unsubscribe();
     updateSubscription = null;
+    newOrderSubscription?.unsubscribe();
+    newOrderSubscription = null;
     callbacks.onDisconnect?.();
   };
 
