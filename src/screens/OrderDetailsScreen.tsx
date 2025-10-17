@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { ArrowLeft, CandyOff, MessageCircleMore, QrCode } from 'lucide-react-native';
 import { colors } from '../theme/colors';
@@ -34,7 +35,7 @@ const getSpecialInstructions = (items: OrderItemDTO[]): string[] =>
     .map((item) => item.specialInstructions?.trim())
     .filter((instruction): instruction is string => Boolean(instruction));
 
-type OrderDetailsRouteProp = { params: RootStackParamList['OrderDetails'] };
+type OrderDetailsRouteProp = RouteProp<RootStackParamList, 'OrderDetails'>;
 
 export const OrderDetailsScreen: React.FC = () => {
   const route = useRoute<OrderDetailsRouteProp>();
@@ -247,7 +248,7 @@ export const OrderDetailsScreen: React.FC = () => {
               })()}
 
               <View style={styles.footerNavigationWrapper}>
-                <FooterNavigation />
+                <FooterNavigation activeKey="orders" />
               </View>
             </View>
           </View>

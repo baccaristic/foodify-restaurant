@@ -19,6 +19,7 @@ import { DriverAssignmentOverlay } from '../components/DriverAssignmentOverlay';
 import { MenuScreen } from '../screens/MenuScreen';
 import { AddDishScreen } from '../screens/AddDishScreen';
 import { ViewMenuItemScreen } from '../screens/ViewMenuItemScreen';
+import { MyOrdersScreen } from '../screens/MyOrdersScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -121,6 +122,7 @@ export const AppNavigator: React.FC = () => {
           {isAuthenticated ? (
             <>
               <Stack.Screen name="Dashboard" component={DashboardScreen} />
+              <Stack.Screen name="MyOrders" component={MyOrdersScreen} />
               <Stack.Screen name="Menu" component={MenuScreen} />
               <Stack.Screen name="AddDish" component={AddDishScreen} />
               <Stack.Screen name="ViewMenuItem" component={ViewMenuItemScreen} />
