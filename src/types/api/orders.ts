@@ -105,4 +105,5 @@ export interface OrderNotificationDTO {
   delivery?: DeliverySummary;
   payment: PaymentSummary;
   statusHistory: OrderStatusHistoryDTO[];
+  pickupToken?: string | null;
 }
