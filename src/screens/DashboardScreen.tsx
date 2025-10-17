@@ -90,6 +90,10 @@ export const DashboardScreen: React.FC = () => {
 
   const ordersCount = useMemo(() => activeOrders.length, [activeOrders]);
   const displayedOrderCount = isOpen ? ordersCount : 0;
+  const handleNavigateMenu = useCallback(() => {
+    navigation.navigate('Menu');
+  }, [navigation]);
+
   const renderOrderCard = useCallback(
     ({ item }: { item: OrderNotificationDTO }) => {
       const itemsTotal = item.items.reduce((total, orderItem) => total + orderItem.quantity, 0);
@@ -180,7 +184,7 @@ export const DashboardScreen: React.FC = () => {
 
               <View style={styles.section}>
                 <View style={styles.quickActionsRow}>
-                  <QuickActionCard title="My Menu" variant="menu" />
+                  <QuickActionCard title="My Menu" variant="menu" onPress={handleNavigateMenu} />
                   <View style={styles.quickActionSpacer} />
                   <QuickActionCard title="My Orders" variant="orders" />
                 </View>

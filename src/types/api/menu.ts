@@ -1,19 +1,24 @@
 import type { LocationDto } from './common';
 
-export interface ExtraDTO {
-  id: number;
+export interface ExtraRequestDTO {
+  id?: number;
   name: string;
   price: number;
   isDefault: boolean;
 }
 
-export interface OptionGroupDTO {
-  id: number;
+export interface OptionGroupRequestDTO {
+  id?: number;
   name: string;
   minSelect: number;
   maxSelect: number;
   required: boolean;
-  extras: ExtraDTO[];
+  extras: ExtraRequestDTO[];
+}
+
+export interface CategoryDTO {
+  id: number;
+  name: string;
 }
 
 export interface MenuItemRequestDTO {
@@ -21,23 +26,33 @@ export interface MenuItemRequestDTO {
   name: string;
   description: string;
   price: number;
-  category: string;
+  categoryIds: number[];
   popular: boolean;
   restaurantId?: number;
   promotionLabel?: string | null;
   promotionPrice?: number | null;
   promotionActive?: boolean;
   imageUrls?: string[];
-  optionGroups?: OptionGroupDTO[];
+  optionGroups?: OptionGroupRequestDTO[];
 }
 
-export interface MenuItemDTO extends MenuItemRequestDTO {
+export interface ExtraDTO extends ExtraRequestDTO {
+  id: number;
+}
+
+export interface OptionGroupDTO extends OptionGroupRequestDTO {
+  id: number;
+  extras: ExtraDTO[];
+}
+
+export interface MenuItemDTO extends Omit<MenuItemRequestDTO, 'categoryIds'> {
   id: number;
   restaurantId: number;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
   location?: LocationDto;
+  categories: CategoryDTO[];
 }
 
 export interface UploadableAsset {

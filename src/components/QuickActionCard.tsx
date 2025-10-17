@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -11,22 +11,33 @@ import OrdersIcon from '../../assets/icons/orders.svg';
 type Props = {
   title: string;
   variant?: 'menu' | 'orders';
+  onPress?: () => void;
 };
 
-export const QuickActionCard: React.FC<Props> = ({ title, variant = 'menu' }) => {
+export const QuickActionCard: React.FC<Props> = ({ title, variant = 'menu', onPress }) => {
   const Icon = variant === 'menu' ? MenuIcon : OrdersIcon;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.iconWrapper}>
-        <Icon width={moderateScale(32)} height={moderateScale(48)} />
+    <TouchableOpacity
+      style={styles.touchable}
+      activeOpacity={onPress ? 0.85 : 1}
+      onPress={onPress}
+      disabled={!onPress}
+    >
+      <View style={styles.container}>
+        <View style={styles.iconWrapper}>
+          <Icon width={moderateScale(32)} height={moderateScale(48)} />
+        </View>
+        <Text style={styles.title}>{title}</Text>
       </View>
-      <Text style={styles.title}>{title}</Text>
-    </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
+  touchable: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.primary,
