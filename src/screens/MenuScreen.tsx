@@ -1,0 +1,447 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { moderateScale } from 'react-native-size-matters';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import { colors } from '../theme/colors';
+import { typography } from '../theme/typography';
+import { restaurantApi } from '../api/restaurantApi';
+import type { MenuItemDTO } from '../types/api';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation';
+
+const backgroundImage = require('../../assets/background.png');
+
+export const MenuScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadMenu = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const response = await restaurantApi.getMenu();
+      setMenuItems(response);
+    } catch (err) {
+      setMenuItems([]);
+      setError('Unable to load your menu right now.');
+    } finally {
+      if (options.silent) {
+        setIsRefreshing(false);
+      } else {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadMenu();
+    }, [loadMenu])
+  );
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    void loadMenu({ silent: true });
+  }, [loadMenu]);
+
+  const handleRetry = useCallback(() => {
+    void loadMenu();
+  }, [loadMenu]);
+
+  const categories = useMemo(() => {
+    const uniqueCategories = Array.from(
+      new Set(
+        menuItems
+          .map((item) => item.category)
+          .filter((category): category is string => Boolean(category?.trim()))
+      )
+    );
+
+    return uniqueCategories.sort((a, b) => a.localeCompare(b));
+  }, [menuItems]);
+
+  useEffect(() => {
+    if (categories.length === 0) {
+      setActiveCategory(null);
+      return;
+    }
+
+    setActiveCategory((previous) => {
+      if (previous && categories.includes(previous)) {
+        return previous;
+      }
+
+      return categories[0];
+    });
+  }, [categories]);
+
+  const filteredItems = useMemo(() => {
+    if (!activeCategory) {
+      return menuItems;
+    }
+
+    return menuItems.filter((item) => item.category === activeCategory);
+  }, [activeCategory, menuItems]);
+
+  const handleGoBack = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
+
+  const handleAddDish = useCallback(() => {
+    Alert.alert('Coming soon', 'Dish management will be available in a future update.');
+  }, []);
+
+  return (
+    <ImageBackground
+      source={backgroundImage}
+      style={styles.background}
+      imageStyle={styles.backgroundImage}
+      resizeMode="cover"
+    >
+      <View style={styles.overlayContainer}>
+        <View pointerEvents="none" style={styles.tintOverlay} />
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar style="dark" />
+          <View style={styles.header}>
+            <TouchableOpacity onPress={handleGoBack} style={styles.backButton} activeOpacity={0.85}>
+              <ArrowLeft color={colors.navy} size={moderateScale(22)} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>My Menu</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          {isLoading ? (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : error ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity onPress={handleRetry} style={styles.retryButton} activeOpacity={0.85}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+              }
+            >
+              {categories.length > 0 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryTabs}
+                >
+                  {categories.map((category) => {
+                    const isActive = category === activeCategory;
+                    return (
+                      <TouchableOpacity
+                        key={category}
+                        onPress={() => setActiveCategory(category)}
+                        activeOpacity={0.85}
+                        style={[styles.categoryChip, isActive && styles.categoryChipActive]}
+                      >
+                        <Text style={[styles.categoryChipText, isActive && styles.categoryChipTextActive]}>
+                          {category}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              <View style={styles.section}>
+                {filteredItems.length === 0 ? (
+                  <View style={styles.emptyStateContainer}>
+                    <Text style={styles.emptyStateTitle}>No dishes yet</Text>
+                    <Text style={styles.emptyStateSubtitle}>
+                      Add your first dish to start building your restaurant menu.
+                    </Text>
+                  </View>
+                ) : (
+                  filteredItems.map((item) => <MenuItemCard key={item.id} item={item} />)
+                )}
+              </View>
+            </ScrollView>
+          )}
+
+          <TouchableOpacity style={styles.addButton} activeOpacity={0.9} onPress={handleAddDish}>
+            <Plus color={colors.white} size={moderateScale(20)} />
+            <Text style={styles.addButtonText}>Add a Dish</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </View>
+    </ImageBackground>
+  );
+};
+
+type MenuItemCardProps = {
+  item: MenuItemDTO;
+};
+
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
+  const imageSource = useMemo(() => {
+    const [primaryImage] = item.imageUrls ?? [];
+    return primaryImage ? { uri: primaryImage } : null;
+  }, [item.imageUrls]);
+  const placeholderInitial = useMemo(() => {
+    const firstLetter = item.name?.trim().charAt(0);
+    return firstLetter ? firstLetter.toUpperCase() : '?';
+  }, [item.name]);
+  const formattedPrice = useMemo(() => {
+    return typeof item.price === 'number' ? `${item.price.toFixed(2)} DT` : '--';
+  }, [item.price]);
+
+  return (
+    <View style={styles.menuCard}>
+      <View style={styles.menuCardHeader}>
+        <TouchableOpacity style={styles.deleteButton} activeOpacity={0.85}>
+          <Trash2 color={colors.primary} size={moderateScale(16)} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.menuCardBody}>
+        <View style={styles.menuCardImageWrapper}>
+          {imageSource ? (
+            <Image source={imageSource} style={styles.menuCardImage} contentFit="cover" />
+          ) : (
+            <View style={styles.menuCardPlaceholder}>
+              <Text style={styles.menuCardPlaceholderText}>{placeholderInitial}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.menuCardContent}>
+          <Text style={styles.menuCardTitle}>{item.name}</Text>
+          {item.description ? <Text style={styles.menuCardDescription}>{item.description}</Text> : null}
+          <Text style={styles.menuCardPrice}>{formattedPrice}</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  background: {
+    flex: 1,
+  },
+  backgroundImage: {
+    width: '100%',
+    height: '100%',
+  },
+  overlayContainer: {
+    flex: 1,
+  },
+  tintOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+  },
+  safeArea: {
+    flex: 1,
+    paddingHorizontal: moderateScale(20),
+    paddingBottom: moderateScale(24),
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(12),
+  },
+  backButton: {
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: moderateScale(18),
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.navy,
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: moderateScale(8),
+    elevation: 2,
+  },
+  headerTitle: {
+    ...typography.h2,
+    color: colors.navy,
+  },
+  headerSpacer: {
+    width: moderateScale(36),
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: moderateScale(20),
+  },
+  errorText: {
+    ...typography.bodyMedium,
+    color: '#E53935',
+    textAlign: 'center',
+    marginBottom: moderateScale(16),
+  },
+  retryButton: {
+    paddingHorizontal: moderateScale(20),
+    paddingVertical: moderateScale(10),
+    borderRadius: moderateScale(12),
+    backgroundColor: colors.primary,
+  },
+  retryButtonText: {
+    ...typography.button,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingBottom: moderateScale(24),
+  },
+  categoryTabs: {
+    paddingVertical: moderateScale(12),
+    paddingRight: moderateScale(10),
+  },
+  categoryChip: {
+    paddingHorizontal: moderateScale(18),
+    paddingVertical: moderateScale(10),
+    borderRadius: moderateScale(20),
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginRight: moderateScale(10),
+    backgroundColor: colors.white,
+  },
+  categoryChipActive: {
+    backgroundColor: colors.primary,
+  },
+  categoryChipText: {
+    ...typography.bodyMedium,
+    color: colors.primary,
+  },
+  categoryChipTextActive: {
+    color: colors.white,
+  },
+  section: {
+    gap: moderateScale(16),
+  },
+  emptyStateContainer: {
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(20),
+    padding: moderateScale(20),
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+  },
+  emptyStateTitle: {
+    ...typography.bodyStrong,
+    color: colors.navy,
+    marginBottom: moderateScale(8),
+  },
+  emptyStateSubtitle: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  menuCard: {
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(24),
+    padding: moderateScale(18),
+    borderWidth: 1,
+    borderColor: colors.primary,
+    shadowColor: colors.navy,
+    shadowOpacity: 0.04,
+    shadowRadius: moderateScale(10),
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  menuCardHeader: {
+    alignItems: 'flex-end',
+  },
+  deleteButton: {
+    width: moderateScale(32),
+    height: moderateScale(32),
+    borderRadius: moderateScale(16),
+    backgroundColor: '#FFECEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuCardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: moderateScale(12),
+  },
+  menuCardImageWrapper: {
+    width: moderateScale(72),
+    height: moderateScale(72),
+    borderRadius: moderateScale(16),
+    overflow: 'hidden',
+    marginRight: moderateScale(16),
+  },
+  menuCardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  menuCardPlaceholder: {
+    flex: 1,
+    backgroundColor: '#F4F5F7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuCardPlaceholderText: {
+    ...typography.h2,
+    color: colors.primary,
+  },
+  menuCardContent: {
+    flex: 1,
+    gap: moderateScale(6),
+  },
+  menuCardTitle: {
+    ...typography.bodyStrong,
+    color: colors.navy,
+  },
+  menuCardDescription: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  menuCardPrice: {
+    ...typography.bodyStrong,
+    color: colors.primary,
+  },
+  addButton: {
+    marginTop: moderateScale(12),
+    height: moderateScale(54),
+    borderRadius: moderateScale(27),
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: moderateScale(10),
+  },
+  addButtonText: {
+    ...typography.button,
+  },
+});

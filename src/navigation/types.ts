@@ -5,4 +5,5 @@ export type RootStackParamList = {
   Dashboard: undefined;
   NewOrderAlert: undefined;
   OrderDetails: { order: OrderNotificationDTO };
+  Menu: undefined;
 };
