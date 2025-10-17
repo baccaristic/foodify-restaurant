@@ -22,6 +22,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { RootStackParamList } from '../navigation';
 import type { MenuItemDTO, OptionGroupDTO } from '../types/api';
+import { API_BASE_URL } from '../api';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -196,7 +197,7 @@ export const ViewMenuItemScreen: React.FC = () => {
                           carouselWidth ? { width: carouselWidth } : null,
                         ]}
                       >
-                        <Image source={{ uri }} style={styles.heroImage} contentFit="cover" />
+                        <Image source={{ uri:  `${API_BASE_URL}/auth/image/${uri}` }} style={styles.heroImage} contentFit="cover" />
                       </View>
                     ))}
                   </ScrollView>

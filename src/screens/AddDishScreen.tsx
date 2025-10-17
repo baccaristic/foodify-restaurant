@@ -33,6 +33,7 @@ import type {
   OptionGroupRequestDTO,
   UploadableAsset,
 } from '../types/api';
+import { API_BASE_URL } from '../api';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -824,7 +825,7 @@ export const AddDishScreen: React.FC = () => {
                 >
                   {existingImageUrls.map((uri, index) => (
                     <View key={`existing-${uri}-${index}`} style={styles.imageCard}>
-                      <Image source={{ uri }} style={styles.imagePreview} contentFit="cover" />
+                      <Image source={{ uri:  `${API_BASE_URL}/auth/image/${uri}` }} style={styles.imagePreview} contentFit="cover" />
                       <TouchableOpacity
                         style={styles.imageRemoveButton}
                         onPress={() => handleRemoveExistingImage(index)}

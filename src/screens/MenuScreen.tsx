@@ -21,6 +21,7 @@ import { restaurantApi } from '../api/restaurantApi';
 import type { CategoryDTO, MenuItemDTO } from '../types/api';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation';
+import { API_BASE_URL } from '../api';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -265,7 +266,7 @@ type MenuItemCardProps = {
 const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onPress }) => {
   const imageSource = useMemo(() => {
     const [primaryImage] = item.imageUrls ?? [];
-    return primaryImage ? { uri: primaryImage } : null;
+    return primaryImage ? { uri: `${API_BASE_URL}/auth/image/${primaryImage}` } : null;
   }, [item.imageUrls]);
   const placeholderInitial = useMemo(() => {
     const firstLetter = item.name?.trim().charAt(0);
