@@ -80,6 +80,14 @@ export const restaurantApi = {
     return response.data;
   },
 
+  async updateMenuAvailability(menuId: number, available: boolean): Promise<MenuItemDTO> {
+    const response = await httpClient.patch<MenuItemDTO>(
+      `/restaurant/menu/${menuId}/availability`,
+      { available }
+    );
+    return response.data;
+  },
+
   async getCategories(): Promise<CategoryDTO[]> {
     const response = await httpClient.get<CategoryDTO[]>('/restaurant/categories');
     return response.data;

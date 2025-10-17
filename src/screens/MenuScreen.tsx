@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ImageBackground,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -33,6 +35,7 @@ export const MenuScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availabilityUpdatingIds, setAvailabilityUpdatingIds] = useState<Record<number, boolean>>({});
 
   const loadMenu = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!options.silent) {
@@ -152,6 +155,42 @@ export const MenuScreen: React.FC = () => {
     [navigation]
   );
 
+  const handleToggleAvailability = useCallback(async (menuId: number, nextValue: boolean) => {
+    let previousAvailability: boolean | undefined;
+
+    setAvailabilityUpdatingIds((prev) => ({ ...prev, [menuId]: true }));
+
+    setMenuItems((prev) =>
+      prev.map((item) => {
+        if (item.id === menuId) {
+          previousAvailability = item.available;
+          return { ...item, available: nextValue };
+        }
+
+        return item;
+      })
+    );
+
+    try {
+      await restaurantApi.updateMenuAvailability(menuId, nextValue);
+    } catch (err) {
+      setMenuItems((prev) =>
+        prev.map((item) =>
+          item.id === menuId && previousAvailability !== undefined
+            ? { ...item, available: previousAvailability }
+            : item
+        )
+      );
+      Alert.alert('Update failed', 'Unable to update availability. Please try again.');
+    } finally {
+      setAvailabilityUpdatingIds((prev) => {
+        const updated = { ...prev };
+        delete updated[menuId];
+        return updated;
+      });
+    }
+  }, []);
+
   return (
     <ImageBackground
       source={backgroundImage}
@@ -241,7 +280,13 @@ export const MenuScreen: React.FC = () => {
                   </View>
                 ) : (
                   filteredItems.map((item) => (
-                    <MenuItemCard key={item.id} item={item} onPress={handleViewItem} />
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      onPress={handleViewItem}
+                      onToggleAvailability={handleToggleAvailability}
+                      isUpdatingAvailability={Boolean(availabilityUpdatingIds[item.id])}
+                    />
                   ))
                 )}
               </View>
@@ -261,9 +306,16 @@ export const MenuScreen: React.FC = () => {
 type MenuItemCardProps = {
   item: MenuItemDTO;
   onPress: (item: MenuItemDTO) => void;
+  onToggleAvailability: (menuId: number, nextValue: boolean) => void;
+  isUpdatingAvailability: boolean;
 };
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onPress }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({
+  item,
+  onPress,
+  onToggleAvailability,
+  isUpdatingAvailability,
+}) => {
   const imageSource = useMemo(() => {
     const [primaryImage] = item.imageUrls ?? [];
     return primaryImage ? { uri: `${API_BASE_URL}/auth/image/${primaryImage}` } : null;
@@ -291,18 +343,58 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onPress }) => {
     return labels.join(' • ');
   }, [item.categories]);
 
+  const availabilityStatusLabel = useMemo(() => {
+    if (isUpdatingAvailability) {
+      return 'Updating...';
+    }
+
+    return item.available ? 'Available' : 'Unavailable';
+  }, [isUpdatingAvailability, item.available]);
+
+  const handleAvailabilityChange = useCallback(
+    (value: boolean) => {
+      onToggleAvailability(item.id, value);
+    },
+    [item.id, onToggleAvailability]
+  );
+
   return (
-    <TouchableOpacity
-      style={styles.menuCard}
-      activeOpacity={0.88}
-      onPress={() => onPress(item)}
-    >
+    <View style={styles.menuCard}>
       <View style={styles.menuCardHeader}>
+        <View style={styles.availabilityToggle}>
+          <Text
+            style={[
+              styles.availabilityStatus,
+              isUpdatingAvailability
+                ? styles.availabilityStatusUpdating
+                : item.available
+                ? styles.availabilityStatusAvailable
+                : styles.availabilityStatusUnavailable,
+            ]}
+          >
+            {availabilityStatusLabel}
+          </Text>
+          <Switch
+            value={item.available}
+            onValueChange={handleAvailabilityChange}
+            disabled={isUpdatingAvailability}
+            trackColor={{ false: '#CBD5E1', true: colors.success }}
+            thumbColor={
+              isUpdatingAvailability ? '#f1f5f9' : item.available ? colors.success : '#f1f5f9'
+            }
+            ios_backgroundColor="#CBD5E1"
+            style={styles.availabilitySwitch}
+          />
+        </View>
         <TouchableOpacity style={styles.deleteButton} activeOpacity={0.85}>
           <Trash2 color={colors.primary} size={moderateScale(16)} />
         </TouchableOpacity>
       </View>
-      <View style={styles.menuCardBody}>
+      <TouchableOpacity
+        style={styles.menuCardBody}
+        activeOpacity={0.88}
+        onPress={() => onPress(item)}
+      >
         <View style={styles.menuCardImageWrapper}>
           {imageSource ? (
             <Image source={imageSource} style={styles.menuCardImage} contentFit="cover" />
@@ -318,8 +410,8 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onPress }) => {
           {categoryLabels ? <Text style={styles.menuCardCategories}>{categoryLabels}</Text> : null}
           <Text style={styles.menuCardPrice}>{formattedPrice}</Text>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -458,7 +550,29 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   menuCardHeader: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  availabilityToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(8),
+  },
+  availabilitySwitch: {
+    transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }],
+  },
+  availabilityStatus: {
+    ...typography.bodySmall,
+  },
+  availabilityStatusAvailable: {
+    color: colors.success,
+  },
+  availabilityStatusUnavailable: {
+    color: colors.primary,
+  },
+  availabilityStatusUpdating: {
+    color: colors.textSecondary,
   },
   deleteButton: {
     width: moderateScale(32),

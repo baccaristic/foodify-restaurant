@@ -49,6 +49,7 @@ export interface MenuItemDTO extends Omit<MenuItemRequestDTO, 'categoryIds'> {
   id: number;
   restaurantId: number;
   active: boolean;
+  available: boolean;
   createdAt?: string;
   updatedAt?: string;
   location?: LocationDto;
