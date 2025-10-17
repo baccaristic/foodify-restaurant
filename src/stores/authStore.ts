@@ -5,6 +5,7 @@ import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY } from '../api/config';
 import { registerAuthHandlers } from '../api/httpClient';
 import { tokenManager } from '../api/tokenManager';
 import type { AuthResponse, LoginRequest, RefreshResponse, UserDTO } from '../types/api';
+import { Platform } from 'react-native';
 
 interface AuthState {
   user: UserDTO | null;
@@ -20,6 +21,11 @@ interface AuthState {
 }
 
 const saveTokens = async (tokens: RefreshResponse): Promise<void> => {
+   if (Platform.OS === 'web') {
+    localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
+    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.accessToken);
+    return;
+  }
   await Promise.all([
     SecureStore.setItemAsync(ACCESS_TOKEN_KEY, tokens.accessToken),
     SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokens.refreshToken),
@@ -27,6 +33,10 @@ const saveTokens = async (tokens: RefreshResponse): Promise<void> => {
 };
 
 const saveUser = async (user: UserDTO): Promise<void> => {
+  if (Platform.OS === 'web') {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    return;
+  }
   await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
 };
 
@@ -38,6 +48,15 @@ const clearSecureStore = async (): Promise<void> => {
   ]);
 };
 
+const getItem = async (key: string) => {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  } else {
+    return await SecureStore.getItemAsync(key);
+  }
+};
+
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
@@ -47,9 +66,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   hydrate: async () => {
     const [accessToken, refreshToken, userRaw] = await Promise.all([
-      SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
-      SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
-      SecureStore.getItemAsync(USER_KEY),
+      getItem(ACCESS_TOKEN_KEY),
+      getItem(REFRESH_TOKEN_KEY),
+      getItem(USER_KEY),
     ]);
 
     const user = userRaw ? (JSON.parse(userRaw) as UserDTO) : null;
