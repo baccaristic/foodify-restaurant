@@ -1,10 +1,9 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Rect } from 'react-native-svg';
+import QRCodeStyled from 'react-native-qrcode-styled';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import { createQrMatrix } from '../utils/createQrMatrix';
 
 interface PickupQrModalProps {
   visible: boolean;
@@ -12,18 +11,14 @@ interface PickupQrModalProps {
   onDismiss: () => void;
 }
 
-const QUIET_ZONE_MODULES = 4;
 const QR_SIZE = moderateScale(240);
+const QR_PADDING = moderateScale(16);
+const QR_PIECE_SIZE = moderateScale(8);
 
 export const PickupQrModal: React.FC<PickupQrModalProps> = ({ visible, pickupToken, onDismiss }) => {
   if (!pickupToken) {
     return null;
   }
-
-  const matrix = useMemo(() => createQrMatrix(pickupToken), [pickupToken]);
-  const moduleCount = matrix.length;
-  const totalModules = moduleCount + QUIET_ZONE_MODULES * 2;
-  const cellSize = QR_SIZE / totalModules;
 
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onDismiss}>
@@ -34,23 +29,15 @@ export const PickupQrModal: React.FC<PickupQrModalProps> = ({ visible, pickupTok
         <View style={styles.content}>
           <Text style={styles.title}>Pickup QR Code</Text>
           <View style={styles.qrWrapper}>
-            <Svg width={QR_SIZE} height={QR_SIZE}>
-              <Rect width={QR_SIZE} height={QR_SIZE} fill={colors.white} />
-              {matrix.map((row, rowIndex) =>
-                row.map((isDark, columnIndex) =>
-                  isDark ? (
-                    <Rect
-                      key={`${rowIndex}-${columnIndex}`}
-                      x={(columnIndex + QUIET_ZONE_MODULES) * cellSize}
-                      y={(rowIndex + QUIET_ZONE_MODULES) * cellSize}
-                      width={cellSize}
-                      height={cellSize}
-                      fill={colors.navy}
-                    />
-                  ) : null
-                )
-              )}
-            </Svg>
+            <QRCodeStyled
+              data={pickupToken}
+              padding={QR_PADDING}
+              pieceSize={QR_PIECE_SIZE}
+              pieceBorderRadius={moderateScale(2)}
+              color={colors.navy}
+              backgroundColor={colors.white}
+              style={styles.qr}
+            />
           </View>
           <Text style={styles.caption}>Show this code to the driver to confirm pickup.</Text>
           <TouchableOpacity style={styles.closeButton} onPress={onDismiss} activeOpacity={0.85}>
@@ -93,6 +80,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  qr: {
+    width: '100%',
+    aspectRatio: 1,
   },
   caption: {
     ...typography.bodySmall,
