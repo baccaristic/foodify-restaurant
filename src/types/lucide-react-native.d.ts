@@ -22,4 +22,5 @@ declare module 'lucide-react-native' {
   export const Trash2: LucideIcon;
   export const Pencil: LucideIcon;
   export const X: LucideIcon;
+  export const CalendarDays: LucideIcon;
 }

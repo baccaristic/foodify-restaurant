@@ -94,6 +94,10 @@ export const DashboardScreen: React.FC = () => {
     navigation.navigate('Menu');
   }, [navigation]);
 
+  const handleNavigateOrders = useCallback(() => {
+    navigation.navigate('MyOrders');
+  }, [navigation]);
+
   const renderOrderCard = useCallback(
     ({ item }: { item: OrderNotificationDTO }) => {
       const itemsTotal = item.items.reduce((total, orderItem) => total + orderItem.quantity, 0);
@@ -186,7 +190,7 @@ export const DashboardScreen: React.FC = () => {
                 <View style={styles.quickActionsRow}>
                   <QuickActionCard title="My Menu" variant="menu" onPress={handleNavigateMenu} />
                   <View style={styles.quickActionSpacer} />
-                  <QuickActionCard title="My Orders" variant="orders" />
+                  <QuickActionCard title="My Orders" variant="orders" onPress={handleNavigateOrders} />
                 </View>
               </View>
 
@@ -199,7 +203,7 @@ export const DashboardScreen: React.FC = () => {
                 </View>
               </View>
             </ScrollView>
-            <FooterNavigation />
+            <FooterNavigation activeKey="home" ordersBadgeCount={activeOrders.length} />
           </View>
         </SafeAreaView>
       </View>

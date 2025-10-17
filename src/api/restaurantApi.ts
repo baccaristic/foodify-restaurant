@@ -4,8 +4,35 @@ import type {
   MenuItemDTO,
   MenuItemRequestDTO,
   OrderNotificationDTO,
+  PaginatedResponse,
   UploadableAsset,
 } from '../types/api';
+
+export type MyOrdersFilterValue = Date | string | null | undefined;
+
+export interface GetMyOrdersParams {
+  page?: number;
+  pageSize?: number;
+  from?: MyOrdersFilterValue;
+  to?: MyOrdersFilterValue;
+}
+
+const formatDateForFilter = (value: MyOrdersFilterValue): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  const date = value;
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const year = date.getFullYear();
+
+  return `${day}/${month}/${year}`;
+};
 
 const serializeMenuPayload = (
   payload: MenuItemRequestDTO,
@@ -52,6 +79,42 @@ export const restaurantApi = {
     const response = await httpClient.post<OrderNotificationDTO>(
       `/restaurant/order/ready/${orderId}`
     );
+    return response.data;
+  },
+
+  async getMyOrders(
+    params: GetMyOrdersParams = {}
+  ): Promise<PaginatedResponse<OrderNotificationDTO>> {
+    const {
+      page = 0,
+      pageSize = 10,
+      from,
+      to,
+    } = params;
+
+    const formattedFrom = formatDateForFilter(from);
+    const formattedTo = formatDateForFilter(to);
+
+    const queryParams: Record<string, string | number> = {
+      page,
+      pageSize,
+    };
+
+    if (formattedFrom) {
+      queryParams.from = formattedFrom;
+    }
+
+    if (formattedTo) {
+      queryParams.to = formattedTo;
+    }
+
+    const response = await httpClient.get<PaginatedResponse<OrderNotificationDTO>>(
+      '/restaurant/my-orders',
+      {
+        params: queryParams,
+      }
+    );
+
     return response.data;
   },
 
