@@ -3,10 +3,12 @@ import {
   ActivityIndicator,
   FlatList,
   ImageBackground,
+  Modal,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +16,9 @@ import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
+import { Calendar } from 'react-native-calendars';
+import type { DateObject, MarkedDates } from 'react-native-calendars';
+import { CalendarDays, X } from 'lucide-react-native';
 import { FooterNavigation } from '../components/FooterNavigation';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -134,6 +139,37 @@ const formatFullDate = (date: Date): string => {
   return `${day} ${month} ${year}`;
 };
 
+const formatFilterDateLabel = (date: Date): string => {
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const month = date.toLocaleDateString('en-US', { month: 'short' });
+  const year = date.getFullYear();
+
+  return `${day} ${month} ${year}`;
+};
+
+const formatCalendarDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
+const parseCalendarDate = (value: string): Date => {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1);
+};
+
+type FiltersState = {
+  from: Date | null;
+  to: Date | null;
+};
+
+const initialFilters: FiltersState = {
+  from: null,
+  to: null,
+};
+
 type OrderListItemProps = {
   order: OrderNotificationDTO;
   onPress: (order: OrderNotificationDTO) => void;
@@ -176,6 +212,8 @@ export const MyOrdersScreen: React.FC = () => {
   const [state, setState] = useState<FetchState>(initialState);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [filters, setFilters] = useState<FiltersState>(initialFilters);
+  const [activePicker, setActivePicker] = useState<'from' | 'to' | null>(null);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   const loadOrders = useCallback(
@@ -186,6 +224,8 @@ export const MyOrdersScreen: React.FC = () => {
         const response: PaginatedResponse<OrderNotificationDTO> = await restaurantApi.getMyOrders({
           page: pageToLoad,
           pageSize: state.pageSize,
+          from: filters.from ?? undefined,
+          to: filters.to ?? undefined,
         });
 
         setState((prev) => ({
@@ -198,7 +238,7 @@ export const MyOrdersScreen: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [state.pageSize]
+    [state.pageSize, filters.from, filters.to]
   );
 
   useEffect(() => {
@@ -231,6 +271,117 @@ export const MyOrdersScreen: React.FC = () => {
   );
 
   const todayLabel = useMemo(() => `Today: ${formatFullDate(new Date())}`, []);
+
+  const markedDates = useMemo<MarkedDates>(() => {
+    const marks: MarkedDates = {};
+
+    const fromDate = filters.from ? formatCalendarDate(filters.from) : undefined;
+    const toDate = filters.to ? formatCalendarDate(filters.to) : undefined;
+
+    if (fromDate && toDate) {
+      const fromTime = parseCalendarDate(fromDate).getTime();
+      const toTime = parseCalendarDate(toDate).getTime();
+      const [start, end] = fromTime <= toTime ? [fromDate, toDate] : [toDate, fromDate];
+
+      if (start === end) {
+        marks[start] = {
+          startingDay: true,
+          endingDay: true,
+          color: colors.primary,
+          textColor: colors.white,
+        };
+      } else {
+        marks[start] = {
+          startingDay: true,
+          color: colors.primary,
+          textColor: colors.white,
+        };
+
+        const current = parseCalendarDate(start);
+        current.setDate(current.getDate() + 1);
+
+        while (formatCalendarDate(current) < end) {
+          const currentKey = formatCalendarDate(current);
+          marks[currentKey] = {
+            color: '#E6F1FF',
+            textColor: colors.textPrimary,
+          };
+          current.setDate(current.getDate() + 1);
+        }
+
+        marks[end] = {
+          endingDay: true,
+          color: colors.primary,
+          textColor: colors.white,
+        };
+      }
+    } else if (fromDate) {
+      marks[fromDate] = {
+        startingDay: true,
+        endingDay: true,
+        color: colors.primary,
+        textColor: colors.white,
+      };
+    } else if (toDate) {
+      marks[toDate] = {
+        startingDay: true,
+        endingDay: true,
+        color: colors.primary,
+        textColor: colors.white,
+      };
+    }
+
+    return marks;
+  }, [filters.from, filters.to]);
+
+  const handleSelectDate = useCallback(
+    (day: DateObject) => {
+      if (!activePicker) {
+        return;
+      }
+
+      const selectedDate = parseCalendarDate(day.dateString);
+
+      setFilters((prev) => {
+        if (activePicker === 'from') {
+          let nextTo = prev.to;
+          if (nextTo && selectedDate > nextTo) {
+            nextTo = selectedDate;
+          }
+
+          return {
+            from: selectedDate,
+            to: nextTo,
+          };
+        }
+
+        let nextFrom = prev.from;
+        if (nextFrom && selectedDate < nextFrom) {
+          nextFrom = selectedDate;
+        }
+
+        return {
+          from: nextFrom ?? selectedDate,
+          to: selectedDate,
+        };
+      });
+
+      setActivePicker(null);
+    },
+    [activePicker]
+  );
+
+  const handleClearFilters = useCallback(() => {
+    setFilters(initialFilters);
+  }, []);
+
+  const getFilterLabel = useCallback(
+    (type: 'from' | 'to'): string => {
+      const value = type === 'from' ? filters.from : filters.to;
+      return value ? formatFilterDateLabel(value) : 'Select date';
+    },
+    [filters.from, filters.to]
+  );
 
   const statusSummary = useMemo(() => {
     return state.items.reduce(
@@ -265,6 +416,44 @@ export const MyOrdersScreen: React.FC = () => {
               <Text style={styles.statusSeparator}> | </Text>
               <Text style={styles.statusPicked}>{`${statusSummary.pickedUp} Picked up`}</Text>
             </Text>
+            <View style={styles.filtersRow}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.filterButton}
+                onPress={() => setActivePicker('from')}
+              >
+                <View style={styles.filterIconWrapper}>
+                  <CalendarDays size={18} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.filterLabel}>From</Text>
+                  <Text style={styles.filterValue}>{getFilterLabel('from')}</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.filterButton}
+                onPress={() => setActivePicker('to')}
+              >
+                <View style={styles.filterIconWrapper}>
+                  <CalendarDays size={18} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.filterLabel}>To</Text>
+                  <Text style={styles.filterValue}>{getFilterLabel('to')}</Text>
+                </View>
+              </TouchableOpacity>
+              {(filters.from || filters.to) && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={handleClearFilters}
+                  style={styles.clearFiltersButton}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.clearFiltersText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           <FlatList
@@ -305,6 +494,48 @@ export const MyOrdersScreen: React.FC = () => {
 
         <FooterNavigation activeKey="orders" />
       </SafeAreaView>
+
+      <Modal
+        visible={activePicker !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setActivePicker(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableWithoutFeedback onPress={() => setActivePicker(null)}>
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+          <View style={styles.calendarModal}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarTitle}>
+                {activePicker === 'from' ? 'Select start date' : 'Select end date'}
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setActivePicker(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Calendar
+              onDayPress={handleSelectDate}
+              markedDates={markedDates}
+              markingType="period"
+              enableSwipeMonths
+              style={styles.calendar}
+              theme={{
+                arrowColor: colors.primary,
+                todayTextColor: colors.primary,
+                selectedDayBackgroundColor: colors.primary,
+                textDayFontFamily: typography.bodyMedium.fontFamily,
+                textMonthFontFamily: typography.h3.fontFamily,
+                textDayHeaderFontFamily: typography.captionStrong.fontFamily,
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 };
@@ -357,6 +588,53 @@ const styles = StyleSheet.create({
   },
   statusPicked: {
     color: colors.success,
+  },
+  filtersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: moderateScale(16),
+    columnGap: moderateScale(12),
+  },
+  filterButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: moderateScale(10),
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(14),
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    gap: moderateScale(10),
+  },
+  filterIconWrapper: {
+    width: moderateScale(32),
+    height: moderateScale(32),
+    borderRadius: moderateScale(16),
+    backgroundColor: '#F1F5FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterLabel: {
+    ...typography.captionStrong,
+    color: colors.textSecondary,
+    marginBottom: moderateScale(2),
+  },
+  filterValue: {
+    ...typography.bodyMedium,
+    color: colors.textPrimary,
+  },
+  clearFiltersButton: {
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: moderateScale(10),
+    backgroundColor: 'transparent',
+    borderRadius: moderateScale(12),
+  },
+  clearFiltersText: {
+    ...typography.bodyMedium,
+    color: colors.primary,
+    fontWeight: '600',
   },
   listContent: {
     paddingBottom: moderateScale(120),
@@ -436,5 +714,38 @@ const styles = StyleSheet.create({
   detailsButtonLabel: {
     ...typography.button,
     color: colors.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    paddingHorizontal: moderateScale(20),
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  calendarModal: {
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(20),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(16),
+    elevation: 6,
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(12),
+  },
+  calendarTitle: {
+    ...typography.h3,
+    color: colors.textPrimary,
+  },
+  calendar: {
+    borderRadius: moderateScale(12),
   },
 });
