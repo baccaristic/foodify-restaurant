@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { moderateScale } from 'react-native-size-matters';
 import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react-native';
@@ -26,7 +27,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { restaurantApi } from '../api/restaurantApi';
 import type { RootStackParamList } from '../navigation';
-import type { CategoryDTO, OptionGroupRequestDTO, UploadableAsset } from '../types/api';
+import type {
+  CategoryDTO,
+  MenuItemDTO,
+  MenuItemRequestDTO,
+  OptionGroupRequestDTO,
+  UploadableAsset,
+} from '../types/api';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -36,6 +43,7 @@ interface ExtraForm {
   id: string;
   name: string;
   price: string;
+  isDefault: boolean;
 }
 
 interface OptionGroupForm {
@@ -48,6 +56,10 @@ interface OptionGroupForm {
 
 export const AddDishScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'AddDish'>>();
+  const params = route.params ?? {};
+  const editingItem: MenuItemDTO | null = params.menuItem ?? null;
+  const origin = params.origin ?? 'menu';
   const [dishName, setDishName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
@@ -56,6 +68,7 @@ export const AddDishScreen: React.FC = () => {
   const [promotionLabel, setPromotionLabel] = useState('');
   const [promotionPrice, setPromotionPrice] = useState('');
   const [selectedAssets, setSelectedAssets] = useState<UploadableAsset[]>([]);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([]);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
@@ -110,6 +123,74 @@ export const AddDishScreen: React.FC = () => {
   useEffect(() => {
     void loadCategories();
   }, [loadCategories]);
+
+  useEffect(() => {
+    if (!editingItem) {
+      return;
+    }
+
+    setDishName(editingItem.name ?? '');
+    setDescription(editingItem.description ?? '');
+    setPrice(
+      typeof editingItem.price === 'number' && Number.isFinite(editingItem.price)
+        ? editingItem.price.toString()
+        : ''
+    );
+    setPopular(Boolean(editingItem.popular));
+    const isPromotionActive = Boolean(editingItem.promotionActive);
+    setPromotionActive(isPromotionActive);
+    setPromotionLabel(editingItem.promotionLabel ?? '');
+    setPromotionPrice(
+      typeof editingItem.promotionPrice === 'number' && Number.isFinite(editingItem.promotionPrice)
+        ? editingItem.promotionPrice.toString()
+        : ''
+    );
+    setSelectedCategoryIds(
+      Array.isArray(editingItem.categories)
+        ? editingItem.categories.map((category) => category.id)
+        : []
+    );
+    setExistingImageUrls(Array.isArray(editingItem.imageUrls) ? editingItem.imageUrls : []);
+    setSelectedAssets([]);
+
+    if (Array.isArray(editingItem.optionGroups) && editingItem.optionGroups.length > 0) {
+      const groups: OptionGroupForm[] = editingItem.optionGroups.map((group: any) => ({
+        id: group?.id ? String(group.id) : createId(),
+        name: group?.name ?? '',
+        minSelect:
+          typeof group?.minSelect === 'number' && Number.isFinite(group.minSelect)
+            ? String(group.minSelect)
+            : typeof group?.minSelect === 'string'
+            ? group.minSelect
+            : '0',
+        maxSelect:
+          typeof group?.maxSelect === 'number' && Number.isFinite(group.maxSelect)
+            ? String(group.maxSelect)
+            : typeof group?.maxSelect === 'string'
+            ? group.maxSelect
+            : '0',
+        extras: Array.isArray(group?.extras)
+          ? group.extras.map((extra: any) => ({
+              id: extra?.id ? String(extra.id) : createId(),
+              name: extra?.name ?? '',
+              price:
+                typeof extra?.price === 'number' && Number.isFinite(extra.price)
+                  ? extra.price.toString()
+                  : typeof extra?.price === 'string'
+                  ? extra.price
+                  : '0',
+              isDefault: Boolean(extra?.isDefault),
+            }))
+          : [],
+      }));
+      setOptionGroups(groups);
+    } else {
+      setOptionGroups([]);
+    }
+
+    setSubmitError(null);
+    setFieldErrors({});
+  }, [editingItem]);
 
   const handleGoBack = useCallback(() => {
     navigation.goBack();
@@ -211,6 +292,7 @@ export const AddDishScreen: React.FC = () => {
 
       const asset = result.assets[0];
 
+      setExistingImageUrls([]);
       setSelectedAssets([
         {
           uri: asset.uri,
@@ -226,6 +308,7 @@ export const AddDishScreen: React.FC = () => {
 
   const handleRemoveImage = useCallback(() => {
     setSelectedAssets([]);
+    setExistingImageUrls([]);
     setSubmitError(null);
   }, []);
 
@@ -339,9 +422,10 @@ export const AddDishScreen: React.FC = () => {
         }
 
         extras.push({
+          id: extra.id.includes('-') ? undefined : Number.parseInt(extra.id, 10),
           name: trimmedExtraName,
           price: parsedExtraPrice,
-          isDefault: false,
+          isDefault: extra.isDefault ?? false,
         });
       }
 
@@ -364,35 +448,71 @@ export const AddDishScreen: React.FC = () => {
     setSubmitError(null);
     setIsSubmitting(true);
 
-    try {
-      await restaurantApi.addMenuItem(
-        {
-          name: trimmedName,
-          description: trimmedDescription,
-          price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
-          categoryIds: selectedCategoryIds,
-          popular,
-          promotionActive,
-          promotionLabel: promotionActive ? promotionLabelValue : null,
-          promotionPrice: promotionActive ? promotionPriceValue : null,
-          optionGroups: optionPayload.length ? optionPayload : undefined,
-        },
-        selectedAssets.length ? selectedAssets : undefined
-      );
+    const basePayload: MenuItemRequestDTO = {
+      name: trimmedName,
+      description: trimmedDescription,
+      price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+      categoryIds: selectedCategoryIds,
+      popular,
+      promotionActive,
+      promotionLabel: promotionActive ? promotionLabelValue : null,
+      promotionPrice: promotionActive ? promotionPriceValue : null,
+      optionGroups: optionPayload.length ? optionPayload : undefined,
+    };
 
-      Alert.alert('Dish added', 'Your dish was added to your menu.', [
-        { text: 'Back to menu', onPress: handleGoBack },
-      ]);
+    const isEditing = Boolean(editingItem?.id);
+
+    if (isEditing) {
+      basePayload.id = editingItem?.id;
+      if (selectedAssets.length === 0) {
+        basePayload.imageUrls = existingImageUrls.length ? existingImageUrls : [];
+      }
+    }
+
+    try {
+      if (isEditing && editingItem?.id) {
+        const updated = await restaurantApi.updateMenuItem(
+          editingItem.id,
+          basePayload,
+          selectedAssets.length ? selectedAssets : undefined
+        );
+
+        Alert.alert('Dish updated', 'Your dish was updated successfully.', [
+          {
+            text: origin === 'view' ? 'View dish' : 'Back to menu',
+            onPress: () => {
+              if (origin === 'view') {
+                navigation.navigate('ViewMenuItem', { item: updated });
+              } else {
+                navigation.navigate('Menu');
+              }
+            },
+          },
+        ]);
+      } else {
+        await restaurantApi.addMenuItem(
+          basePayload,
+          selectedAssets.length ? selectedAssets : undefined
+        );
+
+        Alert.alert('Dish added', 'Your dish was added to your menu.', [
+          { text: 'Back to menu', onPress: handleGoBack },
+        ]);
+      }
     } catch (error) {
-      setSubmitError('Unable to add your dish right now. Please try again.');
+      setSubmitError('Unable to save your dish right now. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   }, [
     description,
     dishName,
+    editingItem,
+    existingImageUrls,
     handleGoBack,
+    navigation,
     optionGroups,
+    origin,
     popular,
     price,
     promotionActive,
@@ -671,15 +791,22 @@ export const AddDishScreen: React.FC = () => {
               <View style={styles.sectionCard}>
                 <Text style={styles.sectionLabel}>Image</Text>
                 <TouchableOpacity
-                  style={[styles.uploadArea, selectedAssets.length > 0 && styles.uploadAreaSelected]}
+                  style={[
+                    styles.uploadArea,
+                    (selectedAssets.length > 0 || existingImageUrls.length > 0) &&
+                      styles.uploadAreaSelected,
+                  ]}
                   onPress={handlePickImage}
                   activeOpacity={0.85}
                   disabled={isSubmitting}
                 >
-                  {selectedAssets.length > 0 ? (
+                  {selectedAssets.length > 0 || existingImageUrls.length > 0 ? (
                     <View style={styles.uploadPreviewWrapper}>
                       <Image
-                        source={{ uri: selectedAssets[0].uri }}
+                        source={{
+                          uri:
+                            selectedAssets[0]?.uri ?? existingImageUrls[0] ?? undefined,
+                        }}
                         style={styles.uploadPreview}
                         contentFit="cover"
                       />
@@ -1068,6 +1195,7 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
         id: createId(),
         name: trimmedName,
         price: extraCharge.trim(),
+        isDefault: false,
       },
     ]);
 

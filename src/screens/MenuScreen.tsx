@@ -144,6 +144,13 @@ export const MenuScreen: React.FC = () => {
     navigation.navigate('AddDish');
   }, [navigation]);
 
+  const handleViewItem = useCallback(
+    (item: MenuItemDTO) => {
+      navigation.navigate('ViewMenuItem', { item });
+    },
+    [navigation]
+  );
+
   return (
     <ImageBackground
       source={backgroundImage}
@@ -232,7 +239,9 @@ export const MenuScreen: React.FC = () => {
                     </Text>
                   </View>
                 ) : (
-                  filteredItems.map((item) => <MenuItemCard key={item.id} item={item} />)
+                  filteredItems.map((item) => (
+                    <MenuItemCard key={item.id} item={item} onPress={handleViewItem} />
+                  ))
                 )}
               </View>
             </ScrollView>
@@ -250,9 +259,10 @@ export const MenuScreen: React.FC = () => {
 
 type MenuItemCardProps = {
   item: MenuItemDTO;
+  onPress: (item: MenuItemDTO) => void;
 };
 
-const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
+const MenuItemCard: React.FC<MenuItemCardProps> = ({ item, onPress }) => {
   const imageSource = useMemo(() => {
     const [primaryImage] = item.imageUrls ?? [];
     return primaryImage ? { uri: primaryImage } : null;
@@ -281,7 +291,11 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
   }, [item.categories]);
 
   return (
-    <View style={styles.menuCard}>
+    <TouchableOpacity
+      style={styles.menuCard}
+      activeOpacity={0.88}
+      onPress={() => onPress(item)}
+    >
       <View style={styles.menuCardHeader}>
         <TouchableOpacity style={styles.deleteButton} activeOpacity={0.85}>
           <Trash2 color={colors.primary} size={moderateScale(16)} />
@@ -304,7 +318,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
           <Text style={styles.menuCardPrice}>{formattedPrice}</Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 

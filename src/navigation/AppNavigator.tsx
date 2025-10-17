@@ -18,6 +18,7 @@ import { OrderDetailsScreen } from '../screens/OrderDetailsScreen';
 import { DriverAssignmentOverlay } from '../components/DriverAssignmentOverlay';
 import { MenuScreen } from '../screens/MenuScreen';
 import { AddDishScreen } from '../screens/AddDishScreen';
+import { ViewMenuItemScreen } from '../screens/ViewMenuItemScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -114,10 +115,7 @@ export const AppNavigator: React.FC = () => {
   }
 
   return (
-    <NavigationContainer
-      ref={navigationRef as unknown as NavigationContainerRef<any>}
-      onReady={() => setNavigationReady(true)}
-    >
+    <NavigationContainer ref={navigationRef} onReady={() => setNavigationReady(true)}>
       <View style={styles.appRoot}>
         <Stack.Navigator key={navigatorKey} screenOptions={{ headerShown: false }}>
           {isAuthenticated ? (
@@ -125,6 +123,7 @@ export const AppNavigator: React.FC = () => {
               <Stack.Screen name="Dashboard" component={DashboardScreen} />
               <Stack.Screen name="Menu" component={MenuScreen} />
               <Stack.Screen name="AddDish" component={AddDishScreen} />
+              <Stack.Screen name="ViewMenuItem" component={ViewMenuItemScreen} />
               <Stack.Screen
                 name="NewOrderAlert"
                 component={NewOrderAlertScreen}

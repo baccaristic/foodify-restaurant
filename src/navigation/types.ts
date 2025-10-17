@@ -1,4 +1,4 @@
-import type { OrderNotificationDTO } from '../types/api';
+import type { MenuItemDTO, OrderNotificationDTO } from '../types/api';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -6,5 +6,6 @@ export type RootStackParamList = {
   NewOrderAlert: undefined;
   OrderDetails: { order: OrderNotificationDTO };
   Menu: undefined;
-  AddDish: undefined;
+  AddDish: { menuItem?: MenuItemDTO; origin?: 'menu' | 'view' } | undefined;
+  ViewMenuItem: { item: MenuItemDTO };
 };
