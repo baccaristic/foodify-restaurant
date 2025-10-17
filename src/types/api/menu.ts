@@ -1,19 +1,19 @@
 import type { LocationDto } from './common';
 
-export interface ExtraDTO {
-  id: number;
+export interface ExtraRequestDTO {
+  id?: number;
   name: string;
   price: number;
   isDefault: boolean;
 }
 
-export interface OptionGroupDTO {
-  id: number;
+export interface OptionGroupRequestDTO {
+  id?: number;
   name: string;
   minSelect: number;
   maxSelect: number;
   required: boolean;
-  extras: ExtraDTO[];
+  extras: ExtraRequestDTO[];
 }
 
 export interface MenuItemRequestDTO {
@@ -28,7 +28,16 @@ export interface MenuItemRequestDTO {
   promotionPrice?: number | null;
   promotionActive?: boolean;
   imageUrls?: string[];
-  optionGroups?: OptionGroupDTO[];
+  optionGroups?: OptionGroupRequestDTO[];
+}
+
+export interface ExtraDTO extends ExtraRequestDTO {
+  id: number;
+}
+
+export interface OptionGroupDTO extends OptionGroupRequestDTO {
+  id: number;
+  extras: ExtraDTO[];
 }
 
 export interface MenuItemDTO extends MenuItemRequestDTO {

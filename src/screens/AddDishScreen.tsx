@@ -17,22 +17,40 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
 import { moderateScale } from 'react-native-size-matters';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react-native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
 import type { RootStackParamList } from '../navigation';
+import type { OptionGroupRequestDTO } from '../types/api';
 
 const backgroundImage = require('../../assets/background.png');
 
-type FieldName = 'name' | 'description' | 'price' | 'category';
+const createUniqueId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+
+type FieldName = 'name' | 'description' | 'price' | 'category' | 'promotionLabel' | 'promotionPrice';
 
 const initialValues: Record<FieldName, string> = {
   name: '',
   description: '',
   price: '',
   category: '',
+  promotionLabel: '',
+  promotionPrice: '',
+};
+
+type ImageField = { id: string; value: string };
+
+type ExtraForm = { id: string; name: string; price: string; isDefault: boolean };
+
+type OptionGroupForm = {
+  id: string;
+  name: string;
+  minSelect: string;
+  maxSelect: string;
+  required: boolean;
+  extras: ExtraForm[];
 };
 
 export const AddDishScreen: React.FC = () => {
@@ -42,6 +60,9 @@ export const AddDishScreen: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [promotionActive, setPromotionActive] = useState(false);
+  const [imageUrls, setImageUrls] = useState<ImageField[]>([{ id: createUniqueId(), value: '' }]);
+  const [optionGroups, setOptionGroups] = useState<OptionGroupForm[]>([]);
 
   const handleGoBack = useCallback(() => {
     navigation.goBack();
@@ -50,20 +71,202 @@ export const AddDishScreen: React.FC = () => {
   const handleChange = useCallback((field: FieldName, value: string) => {
     setValues((previous) => ({ ...previous, [field]: value }));
     setFieldErrors((previous) => ({ ...previous, [field]: undefined }));
+    setSubmitError(null);
   }, []);
+
+  const createEmptyExtra = useCallback((): ExtraForm => ({
+    id: createUniqueId(),
+    name: '',
+    price: '',
+    isDefault: false,
+  }), []);
+
+  const createEmptyOptionGroup = useCallback((): OptionGroupForm => ({
+    id: createUniqueId(),
+    name: '',
+    minSelect: '0',
+    maxSelect: '1',
+    required: false,
+    extras: [createEmptyExtra()],
+  }), [createEmptyExtra]);
+
+  const handlePromotionToggle = useCallback(
+    (value: boolean) => {
+      setPromotionActive(value);
+      setSubmitError(null);
+      if (!value) {
+        setValues((previous) => ({
+          ...previous,
+          promotionLabel: '',
+          promotionPrice: '',
+        }));
+        setFieldErrors((previous) => ({
+          ...previous,
+          promotionLabel: undefined,
+          promotionPrice: undefined,
+        }));
+      }
+    },
+    []
+  );
+
+  const handleImageChange = useCallback((id: string, newValue: string) => {
+    setImageUrls((previous) =>
+      previous.map((image) => (image.id === id ? { ...image, value: newValue } : image))
+    );
+    setSubmitError(null);
+  }, []);
+
+  const handleAddImageField = useCallback(() => {
+    setImageUrls((previous) => [...previous, { id: createUniqueId(), value: '' }]);
+    setSubmitError(null);
+  }, []);
+
+  const handleRemoveImageField = useCallback((id: string) => {
+    setImageUrls((previous) => {
+      if (previous.length === 1) {
+        return [{ id: createUniqueId(), value: '' }];
+      }
+
+      return previous.filter((image) => image.id !== id);
+    });
+    setSubmitError(null);
+  }, []);
+
+  const handleAddOptionGroup = useCallback(() => {
+    setOptionGroups((previous) => [...previous, createEmptyOptionGroup()]);
+    setSubmitError(null);
+  }, [createEmptyOptionGroup]);
+
+  const handleRemoveOptionGroup = useCallback((id: string) => {
+    setOptionGroups((previous) => previous.filter((group) => group.id !== id));
+    setSubmitError(null);
+  }, []);
+
+  const handleOptionGroupFieldChange = useCallback(
+    (id: string, field: 'name' | 'minSelect' | 'maxSelect', value: string) => {
+      setOptionGroups((previous) =>
+        previous.map((group) => (group.id === id ? { ...group, [field]: value } : group))
+      );
+      setSubmitError(null);
+    },
+    []
+  );
+
+  const handleOptionGroupRequiredToggle = useCallback((id: string, required: boolean) => {
+    setOptionGroups((previous) =>
+      previous.map((group) => (group.id === id ? { ...group, required } : group))
+    );
+    setSubmitError(null);
+  }, []);
+
+  const handleAddExtra = useCallback(
+    (groupId: string) => {
+      setOptionGroups((previous) =>
+        previous.map((group) =>
+          group.id === groupId
+            ? { ...group, extras: [...group.extras, createEmptyExtra()] }
+            : group
+        )
+      );
+      setSubmitError(null);
+    },
+    [createEmptyExtra]
+  );
+
+  const handleExtraFieldChange = useCallback(
+    (groupId: string, extraId: string, field: 'name' | 'price', value: string) => {
+      setOptionGroups((previous) =>
+        previous.map((group) => {
+          if (group.id !== groupId) {
+            return group;
+          }
+
+          return {
+            ...group,
+            extras: group.extras.map((extra) =>
+              extra.id === extraId ? { ...extra, [field]: value } : extra
+            ),
+          };
+        })
+      );
+      setSubmitError(null);
+    },
+    []
+  );
+
+  const handleExtraDefaultToggle = useCallback((groupId: string, extraId: string, value: boolean) => {
+    setOptionGroups((previous) =>
+      previous.map((group) => {
+        if (group.id !== groupId) {
+          return group;
+        }
+
+        return {
+          ...group,
+          extras: group.extras.map((extra) =>
+            extra.id === extraId ? { ...extra, isDefault: value } : extra
+          ),
+        };
+      })
+    );
+    setSubmitError(null);
+  }, []);
+
+  const handleRemoveExtra = useCallback((groupId: string, extraId: string) => {
+    setOptionGroups((previous) =>
+      previous.map((group) => {
+        if (group.id !== groupId) {
+          return group;
+        }
+
+        if (group.extras.length === 1) {
+          return {
+            ...group,
+            extras: [createEmptyExtra()],
+          };
+        }
+
+        return {
+          ...group,
+          extras: group.extras.filter((extra) => extra.id !== extraId),
+        };
+      })
+    );
+    setSubmitError(null);
+  }, [createEmptyExtra]);
 
   const isSubmitDisabled = useMemo(() => {
     if (isSubmitting) {
       return true;
     }
 
-    return (
+    if (
       !values.name.trim() ||
       !values.description.trim() ||
       !values.category.trim() ||
       values.price.trim().length === 0
-    );
-  }, [isSubmitting, values.category, values.description, values.name, values.price]);
+    ) {
+      return true;
+    }
+
+    if (promotionActive) {
+      if (!values.promotionLabel.trim() || values.promotionPrice.trim().length === 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [
+    isSubmitting,
+    promotionActive,
+    values.category,
+    values.description,
+    values.name,
+    values.price,
+    values.promotionLabel,
+    values.promotionPrice,
+  ]);
 
   const handleSubmit = useCallback(async () => {
     if (isSubmitting) {
@@ -94,12 +297,122 @@ export const AddDishScreen: React.FC = () => {
       errors.price = 'Add a valid price above 0.';
     }
 
+    let trimmedPromotionLabel: string | null = null;
+    let parsedPromotionPrice: number | null = null;
+
+    if (promotionActive) {
+      trimmedPromotionLabel = values.promotionLabel.trim();
+      const normalizedPromotionPrice = values.promotionPrice.replace(',', '.');
+      parsedPromotionPrice = Number.parseFloat(normalizedPromotionPrice);
+
+      if (!trimmedPromotionLabel) {
+        errors.promotionLabel = 'Add a short label for the promotion.';
+      }
+
+      if (!Number.isFinite(parsedPromotionPrice) || parsedPromotionPrice <= 0) {
+        errors.promotionPrice = 'Enter a valid promotional price.';
+      } else if (Number.isFinite(parsedPrice) && parsedPromotionPrice >= parsedPrice) {
+        errors.promotionPrice = 'Promotional price must be lower than the dish price.';
+      }
+    }
+
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setSubmitError('Please fix the highlighted fields.');
       return;
     }
 
+    const sanitizedImageUrls = imageUrls
+      .map((item) => item.value.trim())
+      .filter((value) => value.length > 0);
+
+    let parsedOptionGroups: OptionGroupRequestDTO[] | undefined;
+
+    if (optionGroups.length > 0) {
+      const mappedGroups: OptionGroupRequestDTO[] = [];
+
+      for (const group of optionGroups) {
+        const trimmedGroupName = group.name.trim();
+        const hasGroupContent =
+          trimmedGroupName.length > 0 ||
+          group.extras.some((extra) => extra.name.trim().length > 0 || extra.price.trim().length > 0);
+
+        if (!hasGroupContent) {
+          continue;
+        }
+
+        const parsedMinSelect = Number.parseInt(group.minSelect, 10);
+        const parsedMaxSelect = Number.parseInt(group.maxSelect, 10);
+
+        if (!trimmedGroupName) {
+          setSubmitError('Please enter a name for each customization group.');
+          return;
+        }
+
+        if (
+          !Number.isFinite(parsedMinSelect) ||
+          !Number.isFinite(parsedMaxSelect) ||
+          parsedMinSelect < 0 ||
+          parsedMaxSelect < 0
+        ) {
+          setSubmitError('Customization limits must be zero or greater.');
+          return;
+        }
+
+        if (parsedMinSelect > parsedMaxSelect) {
+          setSubmitError('Minimum selections cannot exceed the maximum.');
+          return;
+        }
+
+        const parsedExtras: OptionGroupRequestDTO['extras'] = [];
+
+        for (const extra of group.extras) {
+          const trimmedExtraName = extra.name.trim();
+          const normalizedExtraPrice = extra.price.replace(',', '.');
+          const parsedExtraPrice = Number.parseFloat(normalizedExtraPrice);
+          const hasExtraContent = trimmedExtraName.length > 0 || extra.price.trim().length > 0;
+
+          if (!hasExtraContent) {
+            continue;
+          }
+
+          if (!trimmedExtraName) {
+            setSubmitError('Please provide a name for every option in a group.');
+            return;
+          }
+
+          if (!Number.isFinite(parsedExtraPrice) || parsedExtraPrice < 0) {
+            setSubmitError('Option prices must be zero or greater.');
+            return;
+          }
+
+          parsedExtras.push({
+            name: trimmedExtraName,
+            price: parsedExtraPrice,
+            isDefault: extra.isDefault,
+          });
+        }
+
+        if (parsedExtras.length === 0) {
+          setSubmitError('Add at least one option to every customization group.');
+          return;
+        }
+
+        mappedGroups.push({
+          name: trimmedGroupName,
+          minSelect: parsedMinSelect,
+          maxSelect: parsedMaxSelect,
+          required: group.required,
+          extras: parsedExtras,
+        });
+      }
+
+      if (mappedGroups.length > 0) {
+        parsedOptionGroups = mappedGroups;
+      }
+    }
+
+    setFieldErrors({});
     setSubmitError(null);
     setIsSubmitting(true);
 
@@ -111,9 +424,11 @@ export const AddDishScreen: React.FC = () => {
           price: parsedPrice,
           category: trimmedCategory,
           popular,
-          promotionActive: false,
-          promotionLabel: null,
-          promotionPrice: null,
+          promotionActive,
+          promotionLabel: promotionActive ? trimmedPromotionLabel : null,
+          promotionPrice: promotionActive ? parsedPromotionPrice : null,
+          imageUrls: sanitizedImageUrls.length > 0 ? sanitizedImageUrls : undefined,
+          optionGroups: parsedOptionGroups,
         },
         undefined
       );
@@ -126,7 +441,20 @@ export const AddDishScreen: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [handleGoBack, isSubmitting, popular, values.category, values.description, values.name, values.price]);
+  }, [
+    handleGoBack,
+    imageUrls,
+    isSubmitting,
+    optionGroups,
+    popular,
+    promotionActive,
+    values.category,
+    values.description,
+    values.name,
+    values.price,
+    values.promotionLabel,
+    values.promotionPrice,
+  ]);
 
   return (
     <ImageBackground
@@ -236,6 +564,264 @@ export const AddDishScreen: React.FC = () => {
                   trackColor={{ false: '#D7DDE5', true: colors.primary }}
                   disabled={isSubmitting}
                 />
+              </View>
+
+              <View style={styles.switchRow}>
+                <View style={styles.switchCopy}>
+                  <Text style={styles.switchTitle}>Run a promotion</Text>
+                  <Text style={styles.switchSubtitle}>
+                    Display a promotional badge and discounted price for this dish.
+                  </Text>
+                </View>
+                <Switch
+                  value={promotionActive}
+                  onValueChange={handlePromotionToggle}
+                  thumbColor={promotionActive ? colors.white : '#E2E6EA'}
+                  trackColor={{ false: '#D7DDE5', true: colors.primary }}
+                  disabled={isSubmitting}
+                />
+              </View>
+
+              {promotionActive ? (
+                <View style={styles.promotionFields}>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Promotion label</Text>
+                    <TextInput
+                      value={values.promotionLabel}
+                      onChangeText={(text) => handleChange('promotionLabel', text)}
+                      placeholder="Ex. Limited time"
+                      placeholderTextColor={colors.textSecondary}
+                      style={[styles.input, fieldErrors.promotionLabel && styles.inputError]}
+                      editable={!isSubmitting}
+                    />
+                    {fieldErrors.promotionLabel ? (
+                      <Text style={styles.fieldErrorText}>{fieldErrors.promotionLabel}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Promotion price (DT)</Text>
+                    <TextInput
+                      value={values.promotionPrice}
+                      onChangeText={(text) => handleChange('promotionPrice', text)}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      style={[styles.input, fieldErrors.promotionPrice && styles.inputError]}
+                      keyboardType="decimal-pad"
+                      editable={!isSubmitting}
+                    />
+                    {fieldErrors.promotionPrice ? (
+                      <Text style={styles.fieldErrorText}>{fieldErrors.promotionPrice}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>Dish photos</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Paste hosted image links so guests can see what they are ordering.
+                </Text>
+
+                {imageUrls.map((imageField, index) => (
+                  <View key={imageField.id} style={styles.inlineField}>
+                    <TextInput
+                      value={imageField.value}
+                      onChangeText={(text) => handleImageChange(imageField.id, text)}
+                      placeholder={`Image URL ${index + 1}`}
+                      placeholderTextColor={colors.textSecondary}
+                      style={[styles.input, styles.inlineInput]}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isSubmitting}
+                    />
+                    {imageUrls.length > 1 ? (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveImageField(imageField.id)}
+                        style={styles.iconButton}
+                        activeOpacity={0.85}
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 color={colors.navy} size={moderateScale(18)} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  onPress={handleAddImageField}
+                  style={styles.inlineAction}
+                  activeOpacity={0.85}
+                  disabled={isSubmitting}
+                >
+                  <Plus color={colors.primary} size={moderateScale(18)} />
+                  <Text style={styles.inlineActionText}>Add another photo</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Customization groups</Text>
+                  <TouchableOpacity
+                    onPress={handleAddOptionGroup}
+                    style={styles.inlineAction}
+                    activeOpacity={0.85}
+                    disabled={isSubmitting}
+                  >
+                    <Plus color={colors.primary} size={moderateScale(18)} />
+                    <Text style={styles.inlineActionText}>Add group</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.sectionSubtitle}>
+                  Offer add-ons, sides, or choices. Each group can require guests to pick items.
+                </Text>
+
+                {optionGroups.length === 0 ? (
+                  <Text style={styles.emptyHelperText}>
+                    You haven&apos;t added any customization groups yet.
+                  </Text>
+                ) : (
+                  optionGroups.map((group, groupIndex) => (
+                    <View key={group.id} style={styles.optionGroupCard}>
+                      <View style={styles.optionGroupHeader}>
+                        <Text style={styles.optionGroupTitle}>{`Group ${groupIndex + 1}`}</Text>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveOptionGroup(group.id)}
+                          style={styles.iconButton}
+                          activeOpacity={0.85}
+                          disabled={isSubmitting}
+                        >
+                          <Trash2 color={colors.navy} size={moderateScale(18)} />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.fieldGroup}>
+                        <Text style={styles.label}>Group name</Text>
+                        <TextInput
+                          value={group.name}
+                          onChangeText={(text) =>
+                            handleOptionGroupFieldChange(group.id, 'name', text)
+                          }
+                          placeholder="Ex. Choose your base"
+                          placeholderTextColor={colors.textSecondary}
+                          style={styles.input}
+                          editable={!isSubmitting}
+                        />
+                      </View>
+
+                      <View style={styles.fieldRow}>
+                        <View style={styles.rowField}>
+                          <Text style={styles.label}>Min selections</Text>
+                          <TextInput
+                            value={group.minSelect}
+                            onChangeText={(text) =>
+                              handleOptionGroupFieldChange(group.id, 'minSelect', text)
+                            }
+                            placeholder="0"
+                            placeholderTextColor={colors.textSecondary}
+                            style={styles.input}
+                            keyboardType="number-pad"
+                            editable={!isSubmitting}
+                          />
+                        </View>
+
+                        <View style={styles.rowField}>
+                          <Text style={styles.label}>Max selections</Text>
+                          <TextInput
+                            value={group.maxSelect}
+                            onChangeText={(text) =>
+                              handleOptionGroupFieldChange(group.id, 'maxSelect', text)
+                            }
+                            placeholder="1"
+                            placeholderTextColor={colors.textSecondary}
+                            style={styles.input}
+                            keyboardType="number-pad"
+                            editable={!isSubmitting}
+                          />
+                        </View>
+                      </View>
+
+                      <View style={styles.switchRowSmall}>
+                        <Text style={styles.switchTitle}>Selection required</Text>
+                        <Switch
+                          value={group.required}
+                          onValueChange={(value) =>
+                            handleOptionGroupRequiredToggle(group.id, value)
+                          }
+                          thumbColor={group.required ? colors.white : '#E2E6EA'}
+                          trackColor={{ false: '#D7DDE5', true: colors.primary }}
+                          disabled={isSubmitting}
+                        />
+                      </View>
+
+                      <View style={styles.extrasContainer}>
+                        {group.extras.map((extra, extraIndex) => (
+                          <View key={extra.id} style={styles.extraRow}>
+                            <View style={styles.extraFields}>
+                              <Text style={styles.extraTitle}>{`Option ${extraIndex + 1}`}</Text>
+                              <TextInput
+                                value={extra.name}
+                                onChangeText={(text) =>
+                                  handleExtraFieldChange(group.id, extra.id, 'name', text)
+                                }
+                                placeholder="Ex. Brown rice"
+                                placeholderTextColor={colors.textSecondary}
+                                style={[styles.input, styles.extraInput]}
+                                editable={!isSubmitting}
+                              />
+                              <TextInput
+                                value={extra.price}
+                                onChangeText={(text) =>
+                                  handleExtraFieldChange(group.id, extra.id, 'price', text)
+                                }
+                                placeholder="0.00"
+                                placeholderTextColor={colors.textSecondary}
+                                style={[styles.input, styles.extraInput]}
+                                keyboardType="decimal-pad"
+                                editable={!isSubmitting}
+                              />
+                            </View>
+
+                            <View style={styles.extraActions}>
+                              <View style={styles.switchRowSmall}>
+                                <Text style={styles.switchSubtitle}>Default selection</Text>
+                                <Switch
+                                  value={extra.isDefault}
+                                  onValueChange={(value) =>
+                                    handleExtraDefaultToggle(group.id, extra.id, value)
+                                  }
+                                  thumbColor={extra.isDefault ? colors.white : '#E2E6EA'}
+                                  trackColor={{ false: '#D7DDE5', true: colors.primary }}
+                                  disabled={isSubmitting}
+                                />
+                              </View>
+                              {group.extras.length > 1 ? (
+                                <TouchableOpacity
+                                  onPress={() => handleRemoveExtra(group.id, extra.id)}
+                                  style={[styles.iconButton, styles.extraRemoveButton]}
+                                  activeOpacity={0.85}
+                                  disabled={isSubmitting}
+                                >
+                                  <Trash2 color={colors.navy} size={moderateScale(18)} />
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={() => handleAddExtra(group.id)}
+                        style={[styles.inlineAction, styles.addExtraButton]}
+                        activeOpacity={0.85}
+                        disabled={isSubmitting}
+                      >
+                        <Plus color={colors.primary} size={moderateScale(18)} />
+                        <Text style={styles.inlineActionText}>Add option</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                )}
               </View>
 
               {submitError ? <Text style={styles.submitErrorText}>{submitError}</Text> : null}
@@ -376,6 +962,125 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: moderateScale(4),
+  },
+  promotionFields: {
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(20),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(18),
+    borderWidth: 1,
+    borderColor: 'rgba(38, 75, 202, 0.18)',
+    marginBottom: moderateScale(24),
+  },
+  sectionCard: {
+    backgroundColor: colors.white,
+    borderRadius: moderateScale(20),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(18),
+    borderWidth: 1,
+    borderColor: 'rgba(38, 75, 202, 0.18)',
+    marginBottom: moderateScale(24),
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(12),
+    gap: moderateScale(12),
+  },
+  sectionTitle: {
+    ...typography.bodyStrong,
+    color: colors.navy,
+  },
+  sectionSubtitle: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: moderateScale(16),
+  },
+  emptyHelperText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  inlineField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(12),
+    marginBottom: moderateScale(12),
+  },
+  inlineInput: {
+    flex: 1,
+  },
+  iconButton: {
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: moderateScale(20),
+    backgroundColor: 'rgba(23, 33, 58, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(8),
+  },
+  inlineActionText: {
+    ...typography.bodyStrong,
+    color: colors.primary,
+  },
+  optionGroupCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(23, 33, 58, 0.08)',
+    borderRadius: moderateScale(16),
+    padding: moderateScale(14),
+    marginBottom: moderateScale(18),
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  optionGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(12),
+  },
+  optionGroupTitle: {
+    ...typography.bodyStrong,
+    color: colors.navy,
+  },
+  switchRowSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: moderateScale(12),
+    marginBottom: moderateScale(12),
+  },
+  extrasContainer: {
+    gap: moderateScale(16),
+    marginBottom: moderateScale(12),
+  },
+  extraRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: moderateScale(12),
+  },
+  extraFields: {
+    flex: 1,
+    gap: moderateScale(8),
+  },
+  extraTitle: {
+    ...typography.bodyStrong,
+    color: colors.navy,
+  },
+  extraInput: {
+    width: '100%',
+  },
+  extraActions: {
+    alignItems: 'flex-end',
+    gap: moderateScale(12),
+  },
+  extraRemoveButton: {
+    alignSelf: 'flex-end',
+  },
+  addExtraButton: {
+    marginTop: moderateScale(8),
   },
   submitErrorText: {
     ...typography.bodySmall,
