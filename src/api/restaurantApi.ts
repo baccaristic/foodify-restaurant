@@ -1,5 +1,6 @@
 import httpClient from './httpClient';
 import type {
+  CategoryDTO,
   MenuItemDTO,
   MenuItemRequestDTO,
   OrderNotificationDTO,
@@ -76,6 +77,16 @@ export const restaurantApi = {
     const response = await httpClient.put<MenuItemDTO>(`/restaurant/menu/${menuId}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data;
+  },
+
+  async getCategories(): Promise<CategoryDTO[]> {
+    const response = await httpClient.get<CategoryDTO[]>('/restaurant/categories');
+    return response.data;
+  },
+
+  async createCategory(name: string): Promise<CategoryDTO> {
+    const response = await httpClient.post<CategoryDTO>('/restaurant/categories', { name });
     return response.data;
   },
 };

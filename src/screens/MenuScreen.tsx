@@ -18,7 +18,7 @@ import { Image } from 'expo-image';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
-import type { MenuItemDTO } from '../types/api';
+import type { CategoryDTO, MenuItemDTO } from '../types/api';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../navigation';
 
@@ -27,7 +27,8 @@ const backgroundImage = require('../../assets/background.png');
 export const MenuScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [activeCategoryId, setActiveCategoryId] = useState<'all' | number>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +40,30 @@ export const MenuScreen: React.FC = () => {
     setError(null);
 
     try {
-      const response = await restaurantApi.getMenu();
-      setMenuItems(response);
+      const [menuResult, categoryResult] = await Promise.allSettled([
+        restaurantApi.getMenu(),
+        restaurantApi.getCategories(),
+      ]);
+
+      if (menuResult.status === 'fulfilled') {
+        setMenuItems(menuResult.value);
+      } else {
+        throw menuResult.reason;
+      }
+
+      if (categoryResult.status === 'fulfilled') {
+        const sanitizedCategories = categoryResult.value
+          .filter((category) => category.name?.trim().length)
+          .map((category) => ({ ...category, name: category.name.trim() }));
+        sanitizedCategories.sort((a, b) => a.name.localeCompare(b.name));
+        setCategories(sanitizedCategories);
+      } else {
+        setCategories([]);
+      }
     } catch (err) {
       setMenuItems([]);
+      setCategories([]);
+      setActiveCategoryId('all');
       setError('Unable to load your menu right now.');
     } finally {
       if (options.silent) {
@@ -68,40 +89,52 @@ export const MenuScreen: React.FC = () => {
     void loadMenu();
   }, [loadMenu]);
 
-  const categories = useMemo(() => {
-    const uniqueCategories = Array.from(
-      new Set(
-        menuItems
-          .map((item) => item.category)
-          .filter((category): category is string => Boolean(category?.trim()))
-      )
-    );
+  const derivedCategories = useMemo(() => {
+    const categoryMap = new Map<number, string>();
 
-    return uniqueCategories.sort((a, b) => a.localeCompare(b));
-  }, [menuItems]);
+    categories.forEach((category) => {
+      if (category.name?.trim()) {
+        categoryMap.set(category.id, category.name.trim());
+      }
+    });
+
+    menuItems.forEach((item) => {
+      item.categories?.forEach((category) => {
+        if (category?.name?.trim()) {
+          categoryMap.set(category.id, category.name.trim());
+        }
+      });
+    });
+
+    return Array.from(categoryMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [categories, menuItems]);
 
   useEffect(() => {
-    if (categories.length === 0) {
-      setActiveCategory(null);
-      return;
-    }
-
-    setActiveCategory((previous) => {
-      if (previous && categories.includes(previous)) {
+    setActiveCategoryId((previous) => {
+      if (previous === 'all') {
         return previous;
       }
 
-      return categories[0];
+      const stillExists = derivedCategories.some((category) => category.id === previous);
+      if (stillExists) {
+        return previous;
+      }
+
+      return derivedCategories.length > 0 ? derivedCategories[0].id : 'all';
     });
-  }, [categories]);
+  }, [derivedCategories]);
 
   const filteredItems = useMemo(() => {
-    if (!activeCategory) {
+    if (activeCategoryId === 'all') {
       return menuItems;
     }
 
-    return menuItems.filter((item) => item.category === activeCategory);
-  }, [activeCategory, menuItems]);
+    return menuItems.filter((item) =>
+      item.categories?.some((category) => category.id === activeCategoryId)
+    );
+  }, [activeCategoryId, menuItems]);
 
   const handleGoBack = useCallback(() => {
     navigation.goBack();
@@ -150,23 +183,39 @@ export const MenuScreen: React.FC = () => {
                 <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
               }
             >
-              {categories.length > 0 && (
+              {menuItems.length > 0 && (
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.categoryTabs}
                 >
-                  {categories.map((category) => {
-                    const isActive = category === activeCategory;
+                  <TouchableOpacity
+                    key="all"
+                    onPress={() => setActiveCategoryId('all')}
+                    activeOpacity={0.85}
+                    style={[styles.categoryChip, activeCategoryId === 'all' && styles.categoryChipActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        activeCategoryId === 'all' && styles.categoryChipTextActive,
+                      ]}
+                    >
+                      All
+                    </Text>
+                  </TouchableOpacity>
+
+                  {derivedCategories.map((category) => {
+                    const isActive = category.id === activeCategoryId;
                     return (
                       <TouchableOpacity
-                        key={category}
-                        onPress={() => setActiveCategory(category)}
+                        key={category.id}
+                        onPress={() => setActiveCategoryId(category.id)}
                         activeOpacity={0.85}
                         style={[styles.categoryChip, isActive && styles.categoryChipActive]}
                       >
                         <Text style={[styles.categoryChipText, isActive && styles.categoryChipTextActive]}>
-                          {category}
+                          {category.name}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -215,6 +264,21 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
   const formattedPrice = useMemo(() => {
     return typeof item.price === 'number' ? `${item.price.toFixed(2)} DT` : '--';
   }, [item.price]);
+  const categoryLabels = useMemo(() => {
+    if (!Array.isArray(item.categories)) {
+      return null;
+    }
+
+    const labels = item.categories
+      .map((category) => category?.name?.trim())
+      .filter((name): name is string => Boolean(name));
+
+    if (labels.length === 0) {
+      return null;
+    }
+
+    return labels.join(' • ');
+  }, [item.categories]);
 
   return (
     <View style={styles.menuCard}>
@@ -236,6 +300,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({ item }) => {
         <View style={styles.menuCardContent}>
           <Text style={styles.menuCardTitle}>{item.name}</Text>
           {item.description ? <Text style={styles.menuCardDescription}>{item.description}</Text> : null}
+          {categoryLabels ? <Text style={styles.menuCardCategories}>{categoryLabels}</Text> : null}
           <Text style={styles.menuCardPrice}>{formattedPrice}</Text>
         </View>
       </View>
@@ -425,6 +490,11 @@ const styles = StyleSheet.create({
   menuCardDescription: {
     ...typography.bodySmall,
     color: colors.textSecondary,
+  },
+  menuCardCategories: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    marginTop: moderateScale(2),
   },
   menuCardPrice: {
     ...typography.bodyStrong,

@@ -16,12 +16,17 @@ export interface OptionGroupRequestDTO {
   extras: ExtraRequestDTO[];
 }
 
+export interface CategoryDTO {
+  id: number;
+  name: string;
+}
+
 export interface MenuItemRequestDTO {
   id?: number;
   name: string;
   description: string;
   price: number;
-  category: string;
+  categories: number[];
   popular: boolean;
   restaurantId?: number;
   promotionLabel?: string | null;
@@ -40,13 +45,14 @@ export interface OptionGroupDTO extends OptionGroupRequestDTO {
   extras: ExtraDTO[];
 }
 
-export interface MenuItemDTO extends MenuItemRequestDTO {
+export interface MenuItemDTO extends Omit<MenuItemRequestDTO, 'categories'> {
   id: number;
   restaurantId: number;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
   location?: LocationDto;
+  categories: CategoryDTO[];
 }
 
 export interface UploadableAsset {

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,19 +23,18 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
 import type { RootStackParamList } from '../navigation';
-import type { OptionGroupRequestDTO } from '../types/api';
+import type { CategoryDTO, OptionGroupRequestDTO } from '../types/api';
 
 const backgroundImage = require('../../assets/background.png');
 
 const createUniqueId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 
-type FieldName = 'name' | 'description' | 'price' | 'category' | 'promotionLabel' | 'promotionPrice';
+type FieldName = 'name' | 'description' | 'price' | 'promotionLabel' | 'promotionPrice';
 
 const initialValues: Record<FieldName, string> = {
   name: '',
   description: '',
   price: '',
-  category: '',
   promotionLabel: '',
   promotionPrice: '',
 };
@@ -61,6 +60,13 @@ export const AddDishScreen: React.FC = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [promotionActive, setPromotionActive] = useState(false);
+  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [categoriesLoadError, setCategoriesLoadError] = useState<string | null>(null);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [imageUrls, setImageUrls] = useState<ImageField[]>([{ id: createUniqueId(), value: '' }]);
   const [optionGroups, setOptionGroups] = useState<OptionGroupForm[]>([]);
 
@@ -68,11 +74,124 @@ export const AddDishScreen: React.FC = () => {
     navigation.goBack();
   }, [navigation]);
 
+  const loadCategories = useCallback(async () => {
+    setIsLoadingCategories(true);
+    setCategoriesLoadError(null);
+
+    try {
+      const response = await restaurantApi.getCategories();
+      const sanitized = response
+        .filter((category) => category.name?.trim().length)
+        .map((category) => ({ ...category, name: category.name.trim() }));
+      const sorted = sanitized.sort((a, b) => a.name.localeCompare(b.name));
+      setCategories(sorted);
+      setSelectedCategoryIds((previous) =>
+        previous.filter((id) => sorted.some((category) => category.id === id))
+      );
+    } catch (error) {
+      setCategories([]);
+      setCategoriesLoadError('Unable to load categories right now.');
+    } finally {
+      setIsLoadingCategories(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCategories();
+  }, [loadCategories]);
+
+  const handleRefreshCategories = useCallback(() => {
+    void loadCategories();
+  }, [loadCategories]);
+
   const handleChange = useCallback((field: FieldName, value: string) => {
     setValues((previous) => ({ ...previous, [field]: value }));
     setFieldErrors((previous) => ({ ...previous, [field]: undefined }));
     setSubmitError(null);
   }, []);
+
+  const handleToggleCategory = useCallback(
+    (categoryId: number) => {
+      if (isSubmitting) {
+        return;
+      }
+
+      setSelectedCategoryIds((previous) => {
+        if (previous.includes(categoryId)) {
+          return previous.filter((id) => id !== categoryId);
+        }
+
+        return [...previous, categoryId];
+      });
+      setCategoriesError(null);
+      setSubmitError(null);
+    },
+    [isSubmitting]
+  );
+
+  const handleNewCategoryChange = useCallback((text: string) => {
+    setNewCategoryName(text);
+    setCategoriesError(null);
+    setSubmitError(null);
+  }, []);
+
+  const handleCreateCategory = useCallback(async () => {
+    if (isCreatingCategory || isSubmitting) {
+      return;
+    }
+
+    const trimmedName = newCategoryName.trim();
+
+    if (!trimmedName) {
+      setCategoriesError('Enter a category name to add it.');
+      return;
+    }
+
+    if (
+      categories.some(
+        (category) => category.name.toLowerCase() === trimmedName.toLowerCase()
+      )
+    ) {
+      setCategoriesError('That category already exists.');
+      return;
+    }
+
+    setIsCreatingCategory(true);
+    setCategoriesError(null);
+    setSubmitError(null);
+
+    try {
+      const created = await restaurantApi.createCategory(trimmedName);
+      setCategories((previous) => {
+        const next = [...previous, { ...created, name: created.name.trim() }];
+        return next.sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setSelectedCategoryIds((previous) => {
+        if (previous.includes(created.id)) {
+          return previous;
+        }
+
+        return [...previous, created.id];
+      });
+      setNewCategoryName('');
+    } catch (error) {
+      setCategoriesError('Unable to create a category right now.');
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  }, [
+    categories,
+    isCreatingCategory,
+    isSubmitting,
+    newCategoryName,
+    setSubmitError,
+  ]);
+
+  useEffect(() => {
+    if (selectedCategoryIds.length > 0) {
+      setCategoriesError(null);
+    }
+  }, [selectedCategoryIds]);
 
   const createEmptyExtra = useCallback((): ExtraForm => ({
     id: createUniqueId(),
@@ -244,8 +363,8 @@ export const AddDishScreen: React.FC = () => {
     if (
       !values.name.trim() ||
       !values.description.trim() ||
-      !values.category.trim() ||
-      values.price.trim().length === 0
+      values.price.trim().length === 0 ||
+      selectedCategoryIds.length === 0
     ) {
       return true;
     }
@@ -260,7 +379,7 @@ export const AddDishScreen: React.FC = () => {
   }, [
     isSubmitting,
     promotionActive,
-    values.category,
+    selectedCategoryIds,
     values.description,
     values.name,
     values.price,
@@ -277,7 +396,6 @@ export const AddDishScreen: React.FC = () => {
 
     const trimmedName = values.name.trim();
     const trimmedDescription = values.description.trim();
-    const trimmedCategory = values.category.trim();
     const normalizedPrice = values.price.replace(',', '.');
     const parsedPrice = Number.parseFloat(normalizedPrice);
 
@@ -289,16 +407,14 @@ export const AddDishScreen: React.FC = () => {
       errors.description = 'Please describe the dish.';
     }
 
-    if (!trimmedCategory) {
-      errors.category = 'Please provide a category.';
-    }
-
     if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
       errors.price = 'Add a valid price above 0.';
     }
 
     let trimmedPromotionLabel: string | null = null;
     let parsedPromotionPrice: number | null = null;
+
+    let hasError = false;
 
     if (promotionActive) {
       trimmedPromotionLabel = values.promotionLabel.trim();
@@ -317,7 +433,19 @@ export const AddDishScreen: React.FC = () => {
     }
 
     if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
+      hasError = true;
+    }
+
+    if (selectedCategoryIds.length === 0) {
+      setCategoriesError('Select at least one category.');
+      hasError = true;
+    } else {
+      setCategoriesError(null);
+    }
+
+    setFieldErrors(errors);
+
+    if (hasError) {
       setSubmitError('Please fix the highlighted fields.');
       return;
     }
@@ -422,7 +550,7 @@ export const AddDishScreen: React.FC = () => {
           name: trimmedName,
           description: trimmedDescription,
           price: parsedPrice,
-          category: trimmedCategory,
+          categories: selectedCategoryIds,
           popular,
           promotionActive,
           promotionLabel: promotionActive ? trimmedPromotionLabel : null,
@@ -448,7 +576,7 @@ export const AddDishScreen: React.FC = () => {
     optionGroups,
     popular,
     promotionActive,
-    values.category,
+    selectedCategoryIds,
     values.description,
     values.name,
     values.price,
@@ -518,38 +646,134 @@ export const AddDishScreen: React.FC = () => {
                 ) : null}
               </View>
 
-              <View style={styles.fieldRow}>
-                <View style={styles.rowField}>
-                  <Text style={styles.label}>Price (DT)</Text>
-                  <TextInput
-                    value={values.price}
-                    onChangeText={(text) => handleChange('price', text)}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.input, fieldErrors.price && styles.inputError]}
-                    keyboardType="decimal-pad"
-                    returnKeyType="done"
-                    editable={!isSubmitting}
-                  />
-                  {fieldErrors.price ? <Text style={styles.fieldErrorText}>{fieldErrors.price}</Text> : null}
-                </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Price (DT)</Text>
+                <TextInput
+                  value={values.price}
+                  onChangeText={(text) => handleChange('price', text)}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[styles.input, fieldErrors.price && styles.inputError]}
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  editable={!isSubmitting}
+                />
+                {fieldErrors.price ? <Text style={styles.fieldErrorText}>{fieldErrors.price}</Text> : null}
+              </View>
 
-                <View style={styles.rowField}>
-                  <Text style={styles.label}>Category</Text>
-                  <TextInput
-                    value={values.category}
-                    onChangeText={(text) => handleChange('category', text)}
-                    placeholder="Ex. Sushi"
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.input, fieldErrors.category && styles.inputError]}
-                    autoCapitalize="words"
-                    returnKeyType="done"
-                    editable={!isSubmitting}
-                  />
-                  {fieldErrors.category ? (
-                    <Text style={styles.fieldErrorText}>{fieldErrors.category}</Text>
-                  ) : null}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Categories</Text>
+                  <TouchableOpacity
+                    onPress={handleRefreshCategories}
+                    style={styles.inlineAction}
+                    activeOpacity={0.85}
+                    disabled={isLoadingCategories}
+                  >
+                    <Text
+                      style={[
+                        styles.inlineActionText,
+                        isLoadingCategories && styles.inlineActionTextDisabled,
+                      ]}
+                    >
+                      Refresh
+                    </Text>
+                  </TouchableOpacity>
                 </View>
+                <Text style={styles.sectionSubtitle}>
+                  Select every category that matches this dish.
+                </Text>
+
+                {isLoadingCategories ? (
+                  <View style={styles.categoriesLoader}>
+                    <ActivityIndicator color={colors.primary} />
+                  </View>
+                ) : categoriesLoadError ? (
+                  <TouchableOpacity
+                    onPress={handleRefreshCategories}
+                    activeOpacity={0.85}
+                    style={styles.categoriesError}
+                  >
+                    <Text style={styles.fieldErrorText}>{categoriesLoadError}</Text>
+                    <Text style={styles.retryHintText}>Tap to try again</Text>
+                  </TouchableOpacity>
+                ) : categories.length === 0 ? (
+                  <Text style={styles.emptyHelperText}>
+                    No categories yet. Create one below to get started.
+                  </Text>
+                ) : (
+                  <View style={styles.categoryPillGroup}>
+                    {categories.map((category) => {
+                      const isSelected = selectedCategoryIds.includes(category.id);
+                      return (
+                        <TouchableOpacity
+                          key={category.id}
+                          onPress={() => handleToggleCategory(category.id)}
+                          activeOpacity={0.85}
+                          style={[
+                            styles.categoryPill,
+                            isSelected && styles.categoryPillActive,
+                          ]}
+                          disabled={isSubmitting}
+                        >
+                          <Text
+                            style={[
+                              styles.categoryPillText,
+                              isSelected && styles.categoryPillTextActive,
+                            ]}
+                          >
+                            {category.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {categoriesError ? (
+                  <Text style={styles.fieldErrorText}>{categoriesError}</Text>
+                ) : null}
+
+                <View style={styles.newCategoryRow}>
+                  <TextInput
+                    value={newCategoryName}
+                    onChangeText={handleNewCategoryChange}
+                    placeholder="New category name"
+                    placeholderTextColor={colors.textSecondary}
+                    style={[styles.input, styles.inlineInput]}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    editable={!isCreatingCategory && !isSubmitting}
+                    returnKeyType="done"
+                    onSubmitEditing={handleCreateCategory}
+                  />
+                  <TouchableOpacity
+                    onPress={handleCreateCategory}
+                    activeOpacity={0.85}
+                    style={[
+                      styles.addCategoryButton,
+                      (isCreatingCategory ||
+                        isSubmitting ||
+                        newCategoryName.trim().length === 0) &&
+                        styles.addCategoryButtonDisabled,
+                    ]}
+                    disabled={
+                      isCreatingCategory || isSubmitting || newCategoryName.trim().length === 0
+                    }
+                  >
+                    {isCreatingCategory ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <>
+                        <Plus color={colors.white} size={moderateScale(16)} />
+                        <Text style={styles.addCategoryButtonText}>Add</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.emptyHelperText}>
+                  Add a new category if you don&apos;t see it listed.
+                </Text>
               </View>
 
               <View style={styles.switchRow}>
@@ -1026,6 +1250,75 @@ const styles = StyleSheet.create({
   inlineActionText: {
     ...typography.bodyStrong,
     color: colors.primary,
+  },
+  inlineActionTextDisabled: {
+    opacity: 0.5,
+  },
+  categoriesLoader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: moderateScale(12),
+  },
+  categoriesError: {
+    borderWidth: 1,
+    borderColor: '#FF6B6B',
+    borderRadius: moderateScale(16),
+    paddingVertical: moderateScale(12),
+    paddingHorizontal: moderateScale(16),
+    backgroundColor: 'rgba(255, 107, 107, 0.08)',
+    alignItems: 'center',
+    gap: moderateScale(6),
+  },
+  retryHintText: {
+    ...typography.bodySmall,
+    color: colors.primary,
+  },
+  categoryPillGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: moderateScale(10),
+  },
+  categoryPill: {
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(10),
+    borderRadius: moderateScale(20),
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+  },
+  categoryPillActive: {
+    backgroundColor: colors.primary,
+  },
+  categoryPillText: {
+    ...typography.bodySmall,
+    color: colors.primary,
+  },
+  categoryPillTextActive: {
+    color: colors.white,
+  },
+  newCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(12),
+    marginTop: moderateScale(16),
+    marginBottom: moderateScale(8),
+  },
+  addCategoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: moderateScale(6),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(12),
+    borderRadius: moderateScale(16),
+    backgroundColor: colors.primary,
+  },
+  addCategoryButtonDisabled: {
+    backgroundColor: 'rgba(38, 75, 202, 0.45)',
+  },
+  addCategoryButtonText: {
+    ...typography.bodyStrong,
+    color: colors.white,
   },
   optionGroupCard: {
     borderWidth: 1,
