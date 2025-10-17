@@ -17,6 +17,7 @@ import type { OrderNotificationDTO } from '../types/api';
 import { OrderDetailsScreen } from '../screens/OrderDetailsScreen';
 import { DriverAssignmentOverlay } from '../components/DriverAssignmentOverlay';
 import { MenuScreen } from '../screens/MenuScreen';
+import { AddDishScreen } from '../screens/AddDishScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -123,6 +124,7 @@ export const AppNavigator: React.FC = () => {
             <>
               <Stack.Screen name="Dashboard" component={DashboardScreen} />
               <Stack.Screen name="Menu" component={MenuScreen} />
+              <Stack.Screen name="AddDish" component={AddDishScreen} />
               <Stack.Screen
                 name="NewOrderAlert"
                 component={NewOrderAlertScreen}

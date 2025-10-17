@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ImageBackground,
   RefreshControl,
   ScrollView,
@@ -109,8 +108,8 @@ export const MenuScreen: React.FC = () => {
   }, [navigation]);
 
   const handleAddDish = useCallback(() => {
-    Alert.alert('Coming soon', 'Dish management will be available in a future update.');
-  }, []);
+    navigation.navigate('AddDish');
+  }, [navigation]);
 
   return (
     <ImageBackground

@@ -6,4 +6,5 @@ export type RootStackParamList = {
   NewOrderAlert: undefined;
   OrderDetails: { order: OrderNotificationDTO };
   Menu: undefined;
+  AddDish: undefined;
 };
