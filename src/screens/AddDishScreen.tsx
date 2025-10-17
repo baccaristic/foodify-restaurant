@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  GestureResponderEvent,
   ImageBackground,
   KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -19,10 +21,12 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { moderateScale } from 'react-native-size-matters';
 import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/colors';
 import { restaurantApi } from '../api/restaurantApi';
 import type { RootStackParamList } from '../navigation';
-import type { CategoryDTO, OptionGroupRequestDTO } from '../types/api';
+import type { CategoryDTO, OptionGroupRequestDTO, UploadableAsset } from '../types/api';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -46,13 +50,24 @@ export const AddDishScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [dishName, setDishName] = useState('');
   const [description, setDescription] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [price, setPrice] = useState('');
+  const [popular, setPopular] = useState(false);
+  const [promotionActive, setPromotionActive] = useState(false);
+  const [promotionLabel, setPromotionLabel] = useState('');
+  const [promotionPrice, setPromotionPrice] = useState('');
+  const [selectedAssets, setSelectedAssets] = useState<UploadableAsset[]>([]);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; description?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
+    description?: string;
+    price?: string;
+    promotionLabel?: string;
+    promotionPrice?: string;
+  }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
   const [showEditCategoriesModal, setShowEditCategoriesModal] = useState(false);
@@ -154,6 +169,66 @@ export const AddDishScreen: React.FC = () => {
     setSubmitError(null);
   }, []);
 
+  const handleTogglePopular = useCallback((value: boolean) => {
+    setPopular(value);
+    setSubmitError(null);
+  }, []);
+
+  const handleTogglePromotion = useCallback(
+    (value: boolean) => {
+      setPromotionActive(value);
+      setSubmitError(null);
+      if (!value) {
+        setPromotionLabel('');
+        setPromotionPrice('');
+        setFieldErrors((previous) => ({
+          ...previous,
+          promotionLabel: undefined,
+          promotionPrice: undefined,
+        }));
+      }
+    },
+    []
+  );
+
+  const handlePickImage = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to upload images.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        quality: 0.9,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+
+      setSelectedAssets([
+        {
+          uri: asset.uri,
+          name: asset.fileName ?? `dish-${Date.now()}.jpg`,
+          type: asset.mimeType ?? 'image/jpeg',
+        },
+      ]);
+      setSubmitError(null);
+    } catch (error) {
+      setSubmitError('Unable to open your photo library right now.');
+    }
+  }, []);
+
+  const handleRemoveImage = useCallback(() => {
+    setSelectedAssets([]);
+    setSubmitError(null);
+  }, []);
+
   const upsertGroup = useCallback((group: OptionGroupForm) => {
     setOptionGroups((prev) => {
       const exists = prev.some((item) => item.id === group.id);
@@ -168,9 +243,16 @@ export const AddDishScreen: React.FC = () => {
   const handleSubmit = useCallback(async () => {
     const trimmedName = dishName.trim();
     const trimmedDescription = description.trim();
-    const trimmedImageUrl = imageUrl.trim();
+    const normalizedPrice = price.replace(',', '.');
+    const parsedPrice = normalizedPrice.length ? Number.parseFloat(normalizedPrice) : NaN;
 
-    const errors: { name?: string; description?: string } = {};
+    const errors: {
+      name?: string;
+      description?: string;
+      price?: string;
+      promotionLabel?: string;
+      promotionPrice?: string;
+    } = {};
 
     if (!trimmedName) {
       errors.name = 'Dish name is required.';
@@ -178,6 +260,34 @@ export const AddDishScreen: React.FC = () => {
 
     if (!trimmedDescription) {
       errors.description = 'Dish description is required.';
+    }
+
+    if (!normalizedPrice || !Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      errors.price = 'Enter a valid price.';
+    }
+
+    let promotionLabelValue: string | null = null;
+    let promotionPriceValue: number | null = null;
+
+    if (promotionActive) {
+      const trimmedPromotionLabel = promotionLabel.trim();
+      const normalizedPromotionPrice = promotionPrice.replace(',', '.');
+      const parsedPromotionPrice = normalizedPromotionPrice.length
+        ? Number.parseFloat(normalizedPromotionPrice)
+        : NaN;
+
+      if (!trimmedPromotionLabel) {
+        errors.promotionLabel = 'Promotion label is required.';
+      }
+
+      if (!normalizedPromotionPrice || !Number.isFinite(parsedPromotionPrice) || parsedPromotionPrice < 0) {
+        errors.promotionPrice = 'Enter a valid promotion price.';
+      } else if (Number.isFinite(parsedPrice) && parsedPromotionPrice >= parsedPrice) {
+        errors.promotionPrice = 'Promotion price must be less than the dish price.';
+      }
+
+      promotionLabelValue = trimmedPromotionLabel || null;
+      promotionPriceValue = Number.isFinite(parsedPromotionPrice) ? parsedPromotionPrice : null;
     }
 
     if (selectedCategoryIds.length === 0) {
@@ -215,22 +325,22 @@ export const AddDishScreen: React.FC = () => {
 
       for (const extra of group.extras) {
         const trimmedExtraName = extra.name.trim();
-        const normalizedPrice = extra.price.replace(',', '.');
-        const parsedPrice = normalizedPrice.length ? Number.parseFloat(normalizedPrice) : 0;
+        const normalizedExtraPrice = extra.price.replace(',', '.');
+        const parsedExtraPrice = normalizedExtraPrice.length ? Number.parseFloat(normalizedExtraPrice) : 0;
 
         if (!trimmedExtraName) {
           setSubmitError('Every add-on needs a name.');
           return;
         }
 
-        if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        if (!Number.isFinite(parsedExtraPrice) || parsedExtraPrice < 0) {
           setSubmitError('Extra charges must be zero or greater.');
           return;
         }
 
         extras.push({
           name: trimmedExtraName,
-          price: parsedPrice,
+          price: parsedExtraPrice,
           isDefault: false,
         });
       }
@@ -259,16 +369,15 @@ export const AddDishScreen: React.FC = () => {
         {
           name: trimmedName,
           description: trimmedDescription,
-          price: 0,
-          categories: selectedCategoryIds,
-          popular: false,
-          promotionActive: false,
-          promotionLabel: null,
-          promotionPrice: null,
-          imageUrls: trimmedImageUrl ? [trimmedImageUrl] : undefined,
+          price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+          categoryIds: selectedCategoryIds,
+          popular,
+          promotionActive,
+          promotionLabel: promotionActive ? promotionLabelValue : null,
+          promotionPrice: promotionActive ? promotionPriceValue : null,
           optionGroups: optionPayload.length ? optionPayload : undefined,
         },
-        undefined
+        selectedAssets.length ? selectedAssets : undefined
       );
 
       Alert.alert('Dish added', 'Your dish was added to your menu.', [
@@ -283,8 +392,13 @@ export const AddDishScreen: React.FC = () => {
     description,
     dishName,
     handleGoBack,
-    imageUrl,
     optionGroups,
+    popular,
+    price,
+    promotionActive,
+    promotionLabel,
+    promotionPrice,
+    selectedAssets,
     selectedCategoryIds,
   ]);
 
@@ -363,6 +477,97 @@ export const AddDishScreen: React.FC = () => {
                 />
                 {fieldErrors.description ? (
                   <Text style={styles.errorText}>{fieldErrors.description}</Text>
+                ) : null}
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Price</Text>
+                <TextInput
+                  value={price}
+                  onChangeText={(text) => {
+                    setPrice(text);
+                    setFieldErrors((prev) => ({ ...prev, price: undefined }));
+                    setSubmitError(null);
+                  }}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[styles.input, fieldErrors.price && styles.inputError]}
+                  keyboardType="decimal-pad"
+                  editable={!isSubmitting}
+                />
+                {fieldErrors.price ? <Text style={styles.errorText}>{fieldErrors.price}</Text> : null}
+              </View>
+
+              <View style={styles.sectionCard}>
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleCopy}>
+                    <Text style={styles.sectionLabel}>Mark as popular</Text>
+                    <Text style={styles.toggleDescription}>Highlight this dish on your menu.</Text>
+                  </View>
+                  <Switch
+                    value={popular}
+                    onValueChange={handleTogglePopular}
+                    trackColor={{ false: '#F0D7D5', true: colors.primary }}
+                    thumbColor={colors.white}
+                    disabled={isSubmitting}
+                  />
+                </View>
+
+                <View style={[styles.toggleRow, styles.toggleSpacing]}>
+                  <View style={styles.toggleCopy}>
+                    <Text style={styles.sectionLabel}>Promotion</Text>
+                    <Text style={styles.toggleDescription}>Offer a special label and price.</Text>
+                  </View>
+                  <Switch
+                    value={promotionActive}
+                    onValueChange={handleTogglePromotion}
+                    trackColor={{ false: '#F0D7D5', true: colors.primary }}
+                    thumbColor={colors.white}
+                    disabled={isSubmitting}
+                  />
+                </View>
+
+                {promotionActive ? (
+                  <View style={styles.promotionFields}>
+                    <View style={styles.promotionField}>
+                      <Text style={styles.label}>Promotion label</Text>
+                      <TextInput
+                        value={promotionLabel}
+                        onChangeText={(text) => {
+                          setPromotionLabel(text);
+                          setFieldErrors((prev) => ({ ...prev, promotionLabel: undefined }));
+                          setSubmitError(null);
+                        }}
+                        placeholder="Limited time"
+                        placeholderTextColor={colors.textSecondary}
+                        style={[styles.input, fieldErrors.promotionLabel && styles.inputError]}
+                        editable={!isSubmitting}
+                      />
+                      {fieldErrors.promotionLabel ? (
+                        <Text style={styles.errorText}>{fieldErrors.promotionLabel}</Text>
+                      ) : null}
+                    </View>
+
+                    <View style={styles.promotionField}>
+                      <Text style={styles.label}>Promotion price</Text>
+                      <TextInput
+                        value={promotionPrice}
+                        onChangeText={(text) => {
+                          setPromotionPrice(text);
+                          setFieldErrors((prev) => ({ ...prev, promotionPrice: undefined }));
+                          setSubmitError(null);
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor={colors.textSecondary}
+                        style={[styles.input, fieldErrors.promotionPrice && styles.inputError]}
+                        keyboardType="decimal-pad"
+                        editable={!isSubmitting}
+                      />
+                      {fieldErrors.promotionPrice ? (
+                        <Text style={styles.errorText}>{fieldErrors.promotionPrice}</Text>
+                      ) : null}
+                    </View>
+                  </View>
                 ) : null}
               </View>
 
@@ -465,21 +670,38 @@ export const AddDishScreen: React.FC = () => {
 
               <View style={styles.sectionCard}>
                 <Text style={styles.sectionLabel}>Image</Text>
-                <View style={styles.uploadArea}>
-                  <TextInput
-                    value={imageUrl}
-                    onChangeText={(text) => {
-                      setImageUrl(text);
-                      setSubmitError(null);
-                    }}
-                    style={styles.uploadInput}
-                    placeholder="Upload image"
-                    placeholderTextColor={colors.primary}
-                    editable={!isSubmitting}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                </View>
+                <TouchableOpacity
+                  style={[styles.uploadArea, selectedAssets.length > 0 && styles.uploadAreaSelected]}
+                  onPress={handlePickImage}
+                  activeOpacity={0.85}
+                  disabled={isSubmitting}
+                >
+                  {selectedAssets.length > 0 ? (
+                    <View style={styles.uploadPreviewWrapper}>
+                      <Image
+                        source={{ uri: selectedAssets[0].uri }}
+                        style={styles.uploadPreview}
+                        contentFit="cover"
+                      />
+                      <TouchableOpacity
+                        style={styles.uploadRemoveButton}
+                        onPress={(event: GestureResponderEvent) => {
+                          event.stopPropagation();
+                          handleRemoveImage();
+                        }}
+                        activeOpacity={0.85}
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 color={colors.white} size={moderateScale(16)} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.uploadPlaceholder}>
+                      <Plus color={colors.primary} size={moderateScale(18)} />
+                      <Text style={styles.uploadHint}>Tap to upload from your device</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
 
               {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
@@ -1220,6 +1442,30 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textTransform: 'capitalize',
   },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleCopy: {
+    flex: 1,
+    marginRight: moderateScale(16),
+  },
+  toggleDescription: {
+    marginTop: moderateScale(4),
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+  },
+  toggleSpacing: {
+    marginTop: moderateScale(20),
+  },
+  promotionFields: {
+    marginTop: moderateScale(20),
+  },
+  promotionField: {
+    marginBottom: moderateScale(16),
+  },
   categoryChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1259,12 +1505,45 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     padding: moderateScale(16),
     backgroundColor: '#FFF5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: moderateScale(140),
   },
-  uploadInput: {
-    fontSize: moderateScale(14),
+  uploadAreaSelected: {
+    borderStyle: 'solid',
+  },
+  uploadPlaceholder: {
+    alignItems: 'center',
+  },
+  uploadHint: {
+    marginTop: moderateScale(12),
+    fontSize: moderateScale(12),
     fontFamily: 'Roboto',
     fontWeight: '600',
     color: colors.primary,
+    textAlign: 'center',
+  },
+  uploadPreviewWrapper: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: moderateScale(12),
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  uploadPreview: {
+    flex: 1,
+    borderRadius: moderateScale(12),
+  },
+  uploadRemoveButton: {
+    position: 'absolute',
+    top: moderateScale(12),
+    right: moderateScale(12),
+    width: moderateScale(32),
+    height: moderateScale(32),
+    borderRadius: moderateScale(16),
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   submitError: {
     fontSize: moderateScale(12),

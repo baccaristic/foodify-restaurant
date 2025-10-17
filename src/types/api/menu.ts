@@ -26,7 +26,7 @@ export interface MenuItemRequestDTO {
   name: string;
   description: string;
   price: number;
-  categories: number[];
+  categoryIds: number[];
   popular: boolean;
   restaurantId?: number;
   promotionLabel?: string | null;
@@ -45,7 +45,7 @@ export interface OptionGroupDTO extends OptionGroupRequestDTO {
   extras: ExtraDTO[];
 }
 
-export interface MenuItemDTO extends Omit<MenuItemRequestDTO, 'categories'> {
+export interface MenuItemDTO extends Omit<MenuItemRequestDTO, 'categoryIds'> {
   id: number;
   restaurantId: number;
   active: boolean;
