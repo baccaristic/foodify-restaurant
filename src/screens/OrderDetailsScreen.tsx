@@ -19,6 +19,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { RootStackParamList } from '../navigation';
 import { FooterNavigation } from '../components/FooterNavigation';
+import { PickupQrModal } from '../components/PickupQrModal';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderNotificationDTO, OrderItemDTO } from '../types/api';
 
@@ -40,6 +41,7 @@ export const OrderDetailsScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [order, setOrder] = useState<OrderNotificationDTO>(route.params.order);
   const [isMarkingReady, setIsMarkingReady] = useState(false);
+  const [isPickupQrVisible, setPickupQrVisible] = useState(false);
 
   const isPreparing = order.status === 'PREPARING';
   const isReadyForPickup = order.status === 'READY_FOR_PICK_UP';
@@ -85,6 +87,22 @@ export const OrderDetailsScreen: React.FC = () => {
       setIsMarkingReady(false);
     }
   }, [order.orderId]);
+
+  const handleShowPickupQr = useCallback(() => {
+    if (!order.pickupToken) {
+      Alert.alert(
+        'Pickup code unavailable',
+        'This order does not have a pickup QR code yet. Please try again shortly.'
+      );
+      return;
+    }
+
+    setPickupQrVisible(true);
+  }, [order.pickupToken]);
+
+  const handleClosePickupQr = useCallback(() => {
+    setPickupQrVisible(false);
+  }, []);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.background} resizeMode="cover">
@@ -199,7 +217,7 @@ export const OrderDetailsScreen: React.FC = () => {
                     key: 'qr-code',
                     element: (
                       <TouchableOpacity
-                        onPress={() => Alert.alert('QR Code', 'Show the pickup QR code to the driver.')}
+                        onPress={handleShowPickupQr}
                         style={[styles.actionButton, styles.secondaryActionButton]}
                         activeOpacity={0.85}
                       >
@@ -235,6 +253,11 @@ export const OrderDetailsScreen: React.FC = () => {
           </View>
         </SafeAreaView>
       </View>
+      <PickupQrModal
+        visible={isPickupQrVisible}
+        pickupToken={order.pickupToken ?? ''}
+        onDismiss={handleClosePickupQr}
+      />
     </ImageBackground>
   );
 };

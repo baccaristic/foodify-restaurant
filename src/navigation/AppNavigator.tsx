@@ -15,6 +15,7 @@ import { connectRealtime, disconnectRealtime } from '../realtime';
 import type { RootStackParamList } from './types';
 import type { OrderNotificationDTO } from '../types/api';
 import { OrderDetailsScreen } from '../screens/OrderDetailsScreen';
+import { DriverAssignmentOverlay } from '../components/DriverAssignmentOverlay';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -28,6 +29,7 @@ export const AppNavigator: React.FC = () => {
   const navigatorKey = isAuthenticated ? 'authenticated' : 'unauthenticated';
 
   const pushAlert = useOrdersStore((state) => state.pushAlert);
+  const pushDriverAssignment = useOrdersStore((state) => state.pushDriverAssignment);
   const resetAlerts = useOrdersStore((state) => state.resetAlerts);
 
   const handleNewOrder = useCallback(
@@ -38,6 +40,29 @@ export const AppNavigator: React.FC = () => {
       }
     },
     [navigationRef, pushAlert]
+  );
+
+  const handleOrderUpdate = useCallback(
+    (order: OrderNotificationDTO) => {
+      const history = order.statusHistory ?? [];
+      const latestChange = history[history.length - 1];
+
+      if (latestChange?.previousStatus === 'ACCEPTED' && latestChange.newStatus === 'PREPARING') {
+        pushDriverAssignment(order);
+      }
+    },
+    [pushDriverAssignment]
+  );
+
+  const handleViewAssignedOrder = useCallback(
+    (order: OrderNotificationDTO) => {
+      if (!navigationRef.isReady()) {
+        return;
+      }
+
+      navigationRef.navigate('OrderDetails', { order });
+    },
+    [navigationRef]
   );
 
   useEffect(() => {
@@ -54,6 +79,7 @@ export const AppNavigator: React.FC = () => {
     if (isAuthenticated) {
       connectRealtime({
         onNewOrder: handleNewOrder,
+        onOrderUpdate: handleOrderUpdate,
       });
       return () => {
         void disconnectRealtime();
@@ -62,7 +88,7 @@ export const AppNavigator: React.FC = () => {
 
     void disconnectRealtime();
     resetAlerts();
-  }, [handleNewOrder, isAuthenticated, isHydrated, resetAlerts]);
+  }, [handleNewOrder, handleOrderUpdate, isAuthenticated, isHydrated, resetAlerts]);
 
   useEffect(() => {
     if (!isHydrated || !isNavigationReady || !navigationRef.isReady()) {
@@ -90,26 +116,32 @@ export const AppNavigator: React.FC = () => {
       ref={navigationRef as unknown as NavigationContainerRef<any>}
       onReady={() => setNavigationReady(true)}
     >
-      <Stack.Navigator key={navigatorKey} screenOptions={{ headerShown: false }}>
-        {isAuthenticated ? (
-          <>
-            <Stack.Screen name="Dashboard" component={DashboardScreen} />
-            <Stack.Screen
-              name="NewOrderAlert"
-              component={NewOrderAlertScreen}
-              options={{ presentation: 'transparentModal', cardStyle: styles.modalCard }}
-            />
-            <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
-          </>
-        ) : (
-          <Stack.Screen name="Login" component={LoginScreen} />
-        )}
-      </Stack.Navigator>
+      <View style={styles.appRoot}>
+        <Stack.Navigator key={navigatorKey} screenOptions={{ headerShown: false }}>
+          {isAuthenticated ? (
+            <>
+              <Stack.Screen name="Dashboard" component={DashboardScreen} />
+              <Stack.Screen
+                name="NewOrderAlert"
+                component={NewOrderAlertScreen}
+                options={{ presentation: 'transparentModal', cardStyle: styles.modalCard }}
+              />
+              <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="Login" component={LoginScreen} />
+          )}
+        </Stack.Navigator>
+        <DriverAssignmentOverlay onViewOrder={handleViewAssignedOrder} />
+      </View>
     </NavigationContainer>
   );
 };
 
 const styles = StyleSheet.create({
+  appRoot: {
+    flex: 1,
+  },
   loaderContainer: {
     flex: 1,
     alignItems: 'center',
