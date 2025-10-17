@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  GestureResponderEvent,
   ImageBackground,
   KeyboardAvoidingView,
   Modal,
@@ -51,6 +50,7 @@ interface OptionGroupForm {
   name: string;
   minSelect: string;
   maxSelect: string;
+  required: boolean;
   extras: ExtraForm[];
 }
 
@@ -150,7 +150,13 @@ export const AddDishScreen: React.FC = () => {
         ? editingItem.categories.map((category) => category.id)
         : []
     );
-    setExistingImageUrls(Array.isArray(editingItem.imageUrls) ? editingItem.imageUrls : []);
+    setExistingImageUrls(
+      Array.isArray(editingItem.imageUrls)
+        ? editingItem.imageUrls.filter(
+            (url): url is string => typeof url === 'string' && url.trim().length > 0
+          )
+        : []
+    );
     setSelectedAssets([]);
 
     if (Array.isArray(editingItem.optionGroups) && editingItem.optionGroups.length > 0) {
@@ -169,6 +175,7 @@ export const AddDishScreen: React.FC = () => {
             : typeof group?.maxSelect === 'string'
             ? group.maxSelect
             : '0',
+        required: Boolean(group?.required),
         extras: Array.isArray(group?.extras)
           ? group.extras.map((extra: any) => ({
               id: extra?.id ? String(extra.id) : createId(),
@@ -282,7 +289,7 @@ export const AddDishScreen: React.FC = () => {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: false,
+        allowsMultipleSelection: true,
         quality: 0.9,
       });
 
@@ -290,25 +297,38 @@ export const AddDishScreen: React.FC = () => {
         return;
       }
 
-      const asset = result.assets[0];
+      setSelectedAssets((previous) => {
+        const existingUris = new Set(previous.map((asset) => asset.uri));
+        const next = [...previous];
 
-      setExistingImageUrls([]);
-      setSelectedAssets([
-        {
-          uri: asset.uri,
-          name: asset.fileName ?? `dish-${Date.now()}.jpg`,
-          type: asset.mimeType ?? 'image/jpeg',
-        },
-      ]);
+        result.assets.forEach((asset, index) => {
+          if (!asset.uri || existingUris.has(asset.uri)) {
+            return;
+          }
+
+          next.push({
+            uri: asset.uri,
+            name: asset.fileName ?? `dish-${Date.now()}-${index}.jpg`,
+            type: asset.mimeType ?? 'image/jpeg',
+          });
+        });
+
+        return next;
+      });
+
       setSubmitError(null);
     } catch (error) {
       setSubmitError('Unable to open your photo library right now.');
     }
   }, []);
 
-  const handleRemoveImage = useCallback(() => {
-    setSelectedAssets([]);
-    setExistingImageUrls([]);
+  const handleRemoveExistingImage = useCallback((index: number) => {
+    setExistingImageUrls((previous) => previous.filter((_, idx) => idx !== index));
+    setSubmitError(null);
+  }, []);
+
+  const handleRemoveSelectedAsset = useCallback((index: number) => {
+    setSelectedAssets((previous) => previous.filter((_, idx) => idx !== index));
     setSubmitError(null);
   }, []);
 
@@ -439,7 +459,7 @@ export const AddDishScreen: React.FC = () => {
         name: trimmedGroupName,
         minSelect: parsedMin,
         maxSelect: parsedMax,
-        required: false,
+        required: Boolean(group.required),
         extras,
       });
     }
@@ -464,9 +484,7 @@ export const AddDishScreen: React.FC = () => {
 
     if (isEditing) {
       basePayload.id = editingItem?.id;
-      if (selectedAssets.length === 0) {
-        basePayload.imageUrls = existingImageUrls.length ? existingImageUrls : [];
-      }
+      basePayload.imageUrls = existingImageUrls.length ? existingImageUrls : [];
     }
 
     try {
@@ -781,7 +799,12 @@ export const AddDishScreen: React.FC = () => {
                         activeOpacity={0.85}
                         disabled={isSubmitting}
                       >
-                        <Text style={styles.chipText}>{group.name}</Text>
+                        <View style={styles.chipContent}>
+                          <Text style={styles.chipText}>{group.name}</Text>
+                          {group.required ? (
+                            <Text style={styles.chipMeta}>Required</Text>
+                          ) : null}
+                        </View>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -789,46 +812,56 @@ export const AddDishScreen: React.FC = () => {
               </View>
 
               <View style={styles.sectionCard}>
-                <Text style={styles.sectionLabel}>Image</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.uploadArea,
-                    (selectedAssets.length > 0 || existingImageUrls.length > 0) &&
-                      styles.uploadAreaSelected,
-                  ]}
-                  onPress={handlePickImage}
-                  activeOpacity={0.85}
-                  disabled={isSubmitting}
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionLabel}>Images</Text>
+                  <Text style={styles.sectionHelper}>Showcase your dish from every angle.</Text>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.imageCarousel}
                 >
-                  {selectedAssets.length > 0 || existingImageUrls.length > 0 ? (
-                    <View style={styles.uploadPreviewWrapper}>
-                      <Image
-                        source={{
-                          uri:
-                            selectedAssets[0]?.uri ?? existingImageUrls[0] ?? undefined,
-                        }}
-                        style={styles.uploadPreview}
-                        contentFit="cover"
-                      />
+                  {existingImageUrls.map((uri, index) => (
+                    <View key={`existing-${uri}-${index}`} style={styles.imageCard}>
+                      <Image source={{ uri }} style={styles.imagePreview} contentFit="cover" />
                       <TouchableOpacity
-                        style={styles.uploadRemoveButton}
-                        onPress={(event: GestureResponderEvent) => {
-                          event.stopPropagation();
-                          handleRemoveImage();
-                        }}
+                        style={styles.imageRemoveButton}
+                        onPress={() => handleRemoveExistingImage(index)}
                         activeOpacity={0.85}
                         disabled={isSubmitting}
                       >
                         <Trash2 color={colors.white} size={moderateScale(16)} />
                       </TouchableOpacity>
                     </View>
-                  ) : (
+                  ))}
+
+                  {selectedAssets.map((asset, index) => (
+                    <View key={`selected-${asset.uri}-${index}`} style={styles.imageCard}>
+                      <Image source={{ uri: asset.uri }} style={styles.imagePreview} contentFit="cover" />
+                      <TouchableOpacity
+                        style={styles.imageRemoveButton}
+                        onPress={() => handleRemoveSelectedAsset(index)}
+                        activeOpacity={0.85}
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 color={colors.white} size={moderateScale(16)} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={[styles.imageCard, styles.uploadCard]}
+                    onPress={handlePickImage}
+                    activeOpacity={0.85}
+                    disabled={isSubmitting}
+                  >
                     <View style={styles.uploadPlaceholder}>
                       <Plus color={colors.primary} size={moderateScale(18)} />
-                      <Text style={styles.uploadHint}>Tap to upload from your device</Text>
+                      <Text style={styles.uploadHint}>Upload from device</Text>
                     </View>
-                  )}
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </ScrollView>
               </View>
 
               {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
@@ -1157,6 +1190,7 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
   const [extraCharge, setExtraCharge] = useState('');
   const [minSelect, setMinSelect] = useState('0');
   const [maxSelect, setMaxSelect] = useState('0');
+  const [required, setRequired] = useState(false);
   const [extras, setExtras] = useState<ExtraForm[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -1166,11 +1200,13 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
         setGroupName(existingGroup.name);
         setMinSelect(existingGroup.minSelect);
         setMaxSelect(existingGroup.maxSelect);
+        setRequired(existingGroup.required);
         setExtras(existingGroup.extras);
       } else {
         setGroupName('');
         setMinSelect('0');
         setMaxSelect('0');
+        setRequired(false);
         setExtras([]);
       }
       setAddonName('');
@@ -1206,6 +1242,13 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
 
   const handleRemoveExtra = useCallback((id: string) => {
     setExtras((prev) => prev.filter((extra) => extra.id !== id));
+  }, []);
+
+  const handleToggleExtraDefault = useCallback((id: string, value: boolean) => {
+    setExtras((prev) =>
+      prev.map((extra) => (extra.id === id ? { ...extra, isDefault: value } : extra))
+    );
+    setError(null);
   }, []);
 
   const handleSave = useCallback(() => {
@@ -1244,9 +1287,10 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
       name: trimmedGroupName,
       minSelect,
       maxSelect,
+      required,
       extras: sanitizedExtras,
     });
-  }, [existingGroup?.id, extras, groupName, maxSelect, minSelect, onSave]);
+  }, [existingGroup?.id, extras, groupName, maxSelect, minSelect, onSave, required]);
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
@@ -1338,6 +1382,24 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
               </View>
             </View>
 
+            <View style={styles.modalToggleRow}>
+              <View style={styles.modalToggleCopy}>
+                <Text style={styles.modalToggleLabel}>Required group</Text>
+                <Text style={styles.modalToggleHint}>
+                  Guests must pick the minimum number of add-ons when required.
+                </Text>
+              </View>
+              <Switch
+                value={required}
+                onValueChange={(value) => {
+                  setRequired(value);
+                  setError(null);
+                }}
+                trackColor={{ false: '#F0D7D5', true: colors.primary }}
+                thumbColor={colors.white}
+              />
+            </View>
+
             <TouchableOpacity style={styles.inlineAddButton} onPress={handleAddExtra} activeOpacity={0.85}>
               <Text style={styles.inlineAddButtonText}>add</Text>
             </TouchableOpacity>
@@ -1355,15 +1417,26 @@ const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, exist
 
               return (
                 <View key={extra.id} style={styles.modalListItem}>
-                  <View>
+                  <View style={styles.modalListTextWrapper}>
                     <Text style={styles.modalListText}>{extra.name}</Text>
                     <Text style={styles.extraPriceText}>
                       {hasCharge ? `+ ${parsed} dt` : '+ 0 dt'}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleRemoveExtra(extra.id)} hitSlop={styles.hitSlop}>
-                    <Trash2 color={colors.primary} size={moderateScale(18)} />
-                  </TouchableOpacity>
+                  <View style={styles.extraActionsRow}>
+                    <View style={styles.defaultToggle}>
+                      <Text style={styles.defaultToggleLabel}>Default</Text>
+                      <Switch
+                        value={extra.isDefault}
+                        onValueChange={(value) => handleToggleExtraDefault(extra.id, value)}
+                        trackColor={{ false: '#F0D7D5', true: colors.primary }}
+                        thumbColor={colors.white}
+                      />
+                    </View>
+                    <TouchableOpacity onPress={() => handleRemoveExtra(extra.id)} hitSlop={styles.hitSlop}>
+                      <Trash2 color={colors.primary} size={moderateScale(18)} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
             })}
@@ -1416,7 +1489,13 @@ const ManageAddonsModal: React.FC<ManageAddonsModalProps> = ({
             ) : (
               groups.map((group) => (
                 <View key={group.id} style={styles.modalListItem}>
-                  <Text style={styles.modalListText}>{group.name}</Text>
+                  <View style={styles.modalListTextWrapper}>
+                    <Text style={styles.modalListText}>{group.name}</Text>
+                    <Text style={styles.modalListSubText}>
+                      {group.required ? 'Required' : 'Optional'} • {group.extras.length}{' '}
+                      option{group.extras.length === 1 ? '' : 's'}
+                    </Text>
+                  </View>
                   <View style={styles.modalListActions}>
                     <TouchableOpacity onPress={() => onEdit(group.id)} hitSlop={styles.hitSlop}>
                       <Pencil color={colors.primary} size={moderateScale(18)} />
@@ -1545,11 +1624,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: moderateScale(12),
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: moderateScale(12),
+  },
   sectionLabel: {
     fontSize: moderateScale(14),
     fontFamily: 'Roboto',
     fontWeight: '600',
     color: colors.primary,
+  },
+  sectionHelper: {
+    flex: 1,
+    marginLeft: moderateScale(12),
+    fontSize: moderateScale(11),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+    textAlign: 'right',
   },
   sectionActions: {
     flexDirection: 'row',
@@ -1609,6 +1702,9 @@ const styles = StyleSheet.create({
     marginHorizontal: moderateScale(4),
     marginBottom: moderateScale(8),
   },
+  chipContent: {
+    alignItems: 'center',
+  },
   chipSelected: {
     backgroundColor: colors.primary,
   },
@@ -1618,6 +1714,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
+  chipMeta: {
+    marginTop: moderateScale(4),
+    fontSize: moderateScale(10),
+    fontFamily: 'Roboto',
+    fontWeight: '500',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+  },
   chipTextSelected: {
     color: colors.white,
   },
@@ -1625,20 +1729,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     fontFamily: 'Roboto',
     color: colors.textSecondary,
-  },
-  uploadArea: {
-    borderRadius: moderateScale(16),
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderStyle: 'dashed',
-    padding: moderateScale(16),
-    backgroundColor: '#FFF5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: moderateScale(140),
-  },
-  uploadAreaSelected: {
-    borderStyle: 'solid',
   },
   uploadPlaceholder: {
     alignItems: 'center',
@@ -1651,25 +1741,38 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textAlign: 'center',
   },
-  uploadPreviewWrapper: {
-    width: '100%',
-    aspectRatio: 4 / 3,
-    borderRadius: moderateScale(12),
+  imageCarousel: {
+    paddingVertical: moderateScale(4),
+  },
+  imageCard: {
+    width: moderateScale(140),
+    height: moderateScale(140),
+    borderRadius: moderateScale(16),
+    borderWidth: 1,
+    borderColor: '#F0D7D5',
+    backgroundColor: '#FFF5F5',
+    marginRight: moderateScale(12),
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
   },
-  uploadPreview: {
-    flex: 1,
-    borderRadius: moderateScale(12),
+  uploadCard: {
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
   },
-  uploadRemoveButton: {
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  imageRemoveButton: {
     position: 'absolute',
-    top: moderateScale(12),
-    right: moderateScale(12),
-    width: moderateScale(32),
-    height: moderateScale(32),
-    borderRadius: moderateScale(16),
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    top: moderateScale(10),
+    right: moderateScale(10),
+    width: moderateScale(30),
+    height: moderateScale(30),
+    borderRadius: moderateScale(15),
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1807,7 +1910,7 @@ const styles = StyleSheet.create({
   modalListItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: moderateScale(8),
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#F0D7D5',
@@ -1817,6 +1920,16 @@ const styles = StyleSheet.create({
     fontFamily: 'Roboto',
     fontWeight: '600',
     color: colors.navy,
+  },
+  modalListTextWrapper: {
+    flex: 1,
+    marginRight: moderateScale(12),
+  },
+  modalListSubText: {
+    marginTop: moderateScale(4),
+    fontSize: moderateScale(11),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
   },
   modalInlineRow: {
     flexDirection: 'row',
@@ -1850,10 +1963,47 @@ const styles = StyleSheet.create({
     marginTop: moderateScale(12),
     marginBottom: moderateScale(12),
   },
+  modalToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: moderateScale(16),
+  },
+  modalToggleCopy: {
+    flex: 1,
+    marginRight: moderateScale(16),
+  },
+  modalToggleLabel: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  modalToggleHint: {
+    marginTop: moderateScale(4),
+    fontSize: moderateScale(11),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+  },
   extraPriceText: {
     fontSize: moderateScale(12),
     fontFamily: 'Roboto',
     color: colors.textSecondary,
+  },
+  extraActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  defaultToggle: {
+    alignItems: 'center',
+    marginRight: moderateScale(12),
+  },
+  defaultToggleLabel: {
+    fontSize: moderateScale(10),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+    marginBottom: moderateScale(4),
+    textTransform: 'uppercase',
   },
   modalFieldGroup: {
     marginBottom: moderateScale(8),

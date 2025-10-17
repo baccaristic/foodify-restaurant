@@ -1,6 +1,9 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ImageBackground,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,10 +43,42 @@ export const ViewMenuItemScreen: React.FC = () => {
   const route = useRoute<RouteProp<RootStackParamList, 'ViewMenuItem'>>();
   const item = route.params.item;
 
-  const primaryImage = useMemo(() => {
-    const [firstImage] = item.imageUrls ?? [];
-    return firstImage ? { uri: firstImage } : null;
-  }, [item.imageUrls]);
+  const imageUris = useMemo(
+    () =>
+      Array.isArray(item.imageUrls)
+        ? item.imageUrls.filter(
+            (url): url is string => typeof url === 'string' && url.trim().length > 0
+          )
+        : [],
+    [item.imageUrls]
+  );
+
+  const [carouselWidth, setCarouselWidth] = useState(0);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [imageUris.length]);
+
+  const hasImages = imageUris.length > 0;
+
+  const handleCarouselLayout = useCallback((event: LayoutChangeEvent) => {
+    setCarouselWidth(event.nativeEvent.layout.width);
+  }, []);
+
+  const handleMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!carouselWidth) {
+        return;
+      }
+
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const nextIndex = Math.round(offsetX / carouselWidth);
+      const clamped = Math.min(Math.max(nextIndex, 0), Math.max(imageUris.length - 1, 0));
+      setActiveImageIndex(clamped);
+    },
+    [carouselWidth, imageUris.length]
+  );
 
   const titleInitial = useMemo(() => {
     const firstLetter = item.name?.trim().charAt(0);
@@ -97,16 +132,28 @@ export const ViewMenuItemScreen: React.FC = () => {
 
     return (item.optionGroups as OptionGroupDTO[]).map((group) => {
       const minMaxLabel = `Min ${group.minSelect}  •  Max ${group.maxSelect}`;
+      const requirementLabel = group.required ? 'Required' : 'Optional';
       return (
         <View key={group.id ?? group.name} style={styles.addonGroup}>
           <View style={styles.addonHeader}>
-            <Text style={styles.addonTitle}>{group.name}</Text>
-            <Text style={styles.addonLimits}>{minMaxLabel}</Text>
+            <View style={styles.addonHeaderText}>
+              <Text style={styles.addonTitle}>{group.name}</Text>
+              <Text style={styles.addonMeta}>
+                {requirementLabel}  •  {minMaxLabel}
+              </Text>
+            </View>
           </View>
           <View style={styles.addonList}>
             {group.extras?.map((extra) => (
               <View key={extra.id ?? extra.name} style={styles.addonRow}>
-                <Text style={styles.addonName}>{extra.name}</Text>
+                <View style={styles.addonRowInfo}>
+                  <Text style={styles.addonName}>{extra.name}</Text>
+                  {extra.isDefault ? (
+                    <View style={styles.addonDefaultBadge}>
+                      <Text style={styles.addonDefaultBadgeText}>Default</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={styles.addonPrice}>{`+ ${formatPrice(extra.price)}`}</Text>
               </View>
             ))}
@@ -132,9 +179,27 @@ export const ViewMenuItemScreen: React.FC = () => {
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             <View style={styles.card}>
-              <View style={styles.imageWrapper}>
-                {primaryImage ? (
-                  <Image source={primaryImage} style={styles.heroImage} contentFit="cover" />
+              <View style={styles.imageWrapper} onLayout={handleCarouselLayout}>
+                {hasImages ? (
+                  <ScrollView
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={handleMomentumScrollEnd}
+                    style={styles.imageCarousel}
+                  >
+                    {imageUris.map((uri, index) => (
+                      <View
+                        key={`${uri}-${index}`}
+                        style={[
+                          styles.heroImageContainer,
+                          carouselWidth ? { width: carouselWidth } : null,
+                        ]}
+                      >
+                        <Image source={{ uri }} style={styles.heroImage} contentFit="cover" />
+                      </View>
+                    ))}
+                  </ScrollView>
                 ) : (
                   <View style={styles.heroPlaceholder}>
                     <Text style={styles.heroPlaceholderText}>{titleInitial}</Text>
@@ -145,6 +210,19 @@ export const ViewMenuItemScreen: React.FC = () => {
                   <Text style={styles.editButtonLabel}>edit</Text>
                 </TouchableOpacity>
               </View>
+              {hasImages ? (
+                <View style={styles.carouselIndicators}>
+                  {imageUris.map((_, index) => (
+                    <View
+                      key={`indicator-${index}`}
+                      style={[
+                        styles.carouselDot,
+                        index === activeImageIndex && styles.carouselDotActive,
+                      ]}
+                    />
+                  ))}
+                </View>
+              ) : null}
 
               <View style={styles.cardContent}>
                 <View style={styles.titleRow}>
@@ -271,6 +349,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     height: moderateScale(180),
     backgroundColor: 'rgba(23, 33, 58, 0.05)',
+    overflow: 'hidden',
+  },
+  imageCarousel: {
+    flex: 1,
+  },
+  heroImageContainer: {
+    height: '100%',
   },
   heroImage: {
     width: '100%',
@@ -304,6 +389,23 @@ const styles = StyleSheet.create({
     color: colors.white,
     textTransform: 'uppercase',
     letterSpacing: 1.1,
+  },
+  carouselIndicators: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: moderateScale(6),
+    paddingVertical: moderateScale(12),
+  },
+  carouselDot: {
+    width: moderateScale(8),
+    height: moderateScale(8),
+    borderRadius: moderateScale(4),
+    backgroundColor: 'rgba(23, 33, 58, 0.18)',
+  },
+  carouselDotActive: {
+    backgroundColor: colors.primary,
+    width: moderateScale(16),
   },
   cardContent: {
     padding: moderateScale(20),
@@ -414,15 +516,18 @@ const styles = StyleSheet.create({
   },
   addonHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+  },
+  addonHeaderText: {
+    flex: 1,
+    gap: moderateScale(4),
   },
   addonTitle: {
     ...typography.bodyStrong,
     color: colors.navy,
   },
-  addonLimits: {
-    ...typography.bodySmall,
+  addonMeta: {
+    ...typography.captionStrong,
     color: colors.textSecondary,
     textTransform: 'uppercase',
   },
@@ -435,10 +540,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: moderateScale(4),
   },
+  addonRowInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: moderateScale(8),
+    flexShrink: 1,
+  },
   addonName: {
     ...typography.body,
     color: colors.textPrimary,
     flexShrink: 1,
+  },
+  addonDefaultBadge: {
+    paddingHorizontal: moderateScale(8),
+    paddingVertical: moderateScale(2),
+    borderRadius: moderateScale(8),
+    backgroundColor: 'rgba(255, 91, 91, 0.12)',
+  },
+  addonDefaultBadgeText: {
+    ...typography.captionStrong,
+    color: colors.primary,
   },
   addonPrice: {
     ...typography.body,
