@@ -31,13 +31,11 @@ export const PickupQrModal: React.FC<PickupQrModalProps> = ({ visible, pickupTok
           <View style={styles.qrWrapper}>
             <QRCodeStyled
               data={pickupToken}
-              padding={QR_PADDING}
-              pieceSize={QR_PIECE_SIZE}
-              pieceBorderRadius={moderateScale(2)}
               color={colors.navy}
-              backgroundColor={colors.white}
-              style={styles.qr}
-            />
+              style={{backgroundColor: 'white'}}
+              logo={{href: require('../../assets/appLogo.png'), padding: 4, hidePieces: true}}
+              padding={20}
+              />
           </View>
           <Text style={styles.caption}>Show this code to the driver to confirm pickup.</Text>
           <TouchableOpacity style={styles.closeButton} onPress={onDismiss} activeOpacity={0.85}>
