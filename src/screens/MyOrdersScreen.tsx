@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   ImageBackground,
   RefreshControl,
@@ -13,167 +12,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { moderateScale } from 'react-native-size-matters';
-import { CandyOff, MessageCircleMore, QrCode } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
 import { FooterNavigation } from '../components/FooterNavigation';
-import { PickupQrModal } from '../components/PickupQrModal';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderItemDTO, OrderNotificationDTO, PaginatedResponse } from '../types/api';
+import type { RootStackParamList } from '../navigation/types';
 
 const backgroundImage = require('../../assets/background.png');
-
-const formatCurrency = (value: number): string => `${value.toFixed(3).replace('.', ',')} DT`;
-
-const getSpecialInstructions = (items: OrderItemDTO[]): string[] =>
-  items
-    .map((item) => item.specialInstructions?.trim())
-    .filter((instruction): instruction is string => Boolean(instruction));
-
-const getAllergyNotes = (notes: string[]): string | null => {
-  if (notes.length === 0) {
-    return null;
-  }
-
-  const matching = notes.filter((note) => /allerg/i.test(note));
-  return matching.length > 0 ? matching.join('\n') : null;
-};
-
-const getAdditionalComments = (
-  notes: string[],
-  order: OrderNotificationDTO
-): string | null => {
-  const nonAllergyNotes = notes.filter((note) => !/allerg/i.test(note));
-  const savedAddressNotes = order.savedAddress?.notes?.trim();
-  const savedAddressDirections = order.savedAddress?.directions?.trim();
-  const deliverySavedAddressNotes = order.delivery?.savedAddress?.notes?.trim();
-  const deliverySavedAddressDirections = order.delivery?.savedAddress?.directions?.trim();
-
-  const combined = [
-    nonAllergyNotes.length > 0 ? nonAllergyNotes.join('\n') : null,
-    savedAddressNotes || null,
-    savedAddressDirections || null,
-    deliverySavedAddressNotes || null,
-    deliverySavedAddressDirections || null,
-  ].filter((value): value is string => Boolean(value));
-
-  return combined.length > 0 ? combined.join('\n') : null;
-};
-
-type OrderHistoryCardProps = {
-  order: OrderNotificationDTO;
-  onMarkReady: (orderId: number) => void;
-  onShowQr: (order: OrderNotificationDTO) => void;
-  isMarking: boolean;
-};
-
-const OrderHistoryCard: React.FC<OrderHistoryCardProps> = ({
-  order,
-  onMarkReady,
-  onShowQr,
-  isMarking,
-}) => {
-  const customerNotes = useMemo(() => getSpecialInstructions(order.items), [order.items]);
-  const allergyNotes = useMemo(() => getAllergyNotes(customerNotes), [customerNotes]);
-  const additionalComments = useMemo(
-    () => getAdditionalComments(customerNotes, order),
-    [customerNotes, order]
-  );
-
-  const isPreparing = order.status === 'PREPARING';
-
-  return (
-    <View style={styles.orderCard}>
-      <View style={styles.orderHeaderRow}>
-        <Text style={styles.orderNumber}>{`Order N°${order.orderId}`}</Text>
-        <View style={styles.totalContainer}>
-          <Text style={styles.totalLabel}>TOTAL</Text>
-          <View style={styles.totalBadge}>
-            <Text style={styles.totalValue}>{formatCurrency(order.payment.total)}</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.detailsCard}>
-        <Text style={styles.detailsTitle}>Details</Text>
-        <View style={styles.cardDivider} />
-        {order.items.map((item, index) => {
-          const extrasTotal = item.extrasTotal > 0 ? `+${formatCurrency(item.extrasTotal)}` : null;
-
-          return (
-            <View key={`${item.menuItemId}-${index}`} style={styles.menuRow}>
-              <View style={styles.menuInfo}>
-                <View style={styles.menuHeader}>
-                  <Text style={styles.quantityLabel}>{`${item.quantity}X`}</Text>
-                  <Text style={styles.menuName}>{item.menuItemName}</Text>
-                </View>
-                {item.extras.length > 0
-                  ? item.extras.map((extra, extraIndex) => (
-                      <Text key={`${extra}-${extraIndex}`} style={styles.extraLabel}>
-                        {extra}
-                      </Text>
-                    ))
-                  : null}
-              </View>
-              <View style={styles.priceColumn}>
-                <Text style={styles.priceLabel}>{formatCurrency(item.lineTotal)}</Text>
-                {extrasTotal ? <Text style={styles.extraPriceLabel}>{extrasTotal}</Text> : null}
-              </View>
-            </View>
-          );
-        })}
-      </View>
-
-      <View style={styles.notesCard}>
-        <View style={styles.noteSection}>
-          <View style={styles.noteHeader}>
-            <CandyOff color={colors.primary} size={moderateScale(20)} strokeWidth={2.5} />
-            <Text style={styles.noteLabel}>I have Allergies</Text>
-          </View>
-          <Text style={styles.noteValue}>{allergyNotes ?? 'No allergies reported.'}</Text>
-        </View>
-
-        <View style={styles.noteDivider} />
-
-        <View style={styles.noteSection}>
-          <View style={styles.noteHeader}>
-            <MessageCircleMore color={colors.primary} size={moderateScale(20)} strokeWidth={2.5} />
-            <Text style={styles.noteLabel}>comment</Text>
-          </View>
-          <Text style={styles.noteValue}>
-            {additionalComments ?? 'Sauce Soja Salée Uniquement'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.actionsRow}>
-        {isPreparing ? (
-          <TouchableOpacity
-            onPress={() => onMarkReady(order.orderId)}
-            style={[styles.actionButton, styles.primaryActionButton]}
-            activeOpacity={0.85}
-            disabled={isMarking}
-          >
-            {isMarking ? (
-              <ActivityIndicator color={colors.white} />
-            ) : (
-              <Text style={styles.primaryActionLabel}>Mark as ready</Text>
-            )}
-          </TouchableOpacity>
-        ) : null}
-
-        <TouchableOpacity
-          onPress={() => onShowQr(order)}
-          style={[styles.actionButton, styles.secondaryActionButton]}
-          activeOpacity={0.85}
-        >
-          <QrCode color={colors.primary} size={moderateScale(18)} strokeWidth={2.5} />
-          <Text style={styles.secondaryActionLabel}>QR CODE</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-};
 
 type FetchState = {
   items: OrderNotificationDTO[];
@@ -189,18 +37,150 @@ const initialState: FetchState = {
   totalItems: 0,
 };
 
+type StatusCategory = 'preparing' | 'ready' | 'pickedUp' | 'other';
+
+type StatusMeta = {
+  label: string;
+  badgeBackground: string;
+  badgeText: string;
+};
+
+const STATUS_META: Record<StatusCategory, StatusMeta> = {
+  preparing: {
+    label: 'Preparing',
+    badgeBackground: colors.primary,
+    badgeText: colors.white,
+  },
+  ready: {
+    label: 'Ready',
+    badgeBackground: '#E0E0E0',
+    badgeText: colors.textPrimary,
+  },
+  pickedUp: {
+    label: 'Picked up',
+    badgeBackground: colors.success,
+    badgeText: colors.white,
+  },
+  other: {
+    label: 'Pending',
+    badgeBackground: '#E0E0E0',
+    badgeText: colors.textPrimary,
+  },
+};
+
+const formatCurrency = (value: number): string => `${value.toFixed(2)} DT`;
+
+const getItemsCount = (items: OrderItemDTO[]): number =>
+  items.reduce((total, item) => total + item.quantity, 0);
+
+const getStatusCategory = (status: OrderNotificationDTO['status']): StatusCategory => {
+  switch (status) {
+    case 'PREPARING':
+    case 'PENDING':
+    case 'ACCEPTED':
+      return 'preparing';
+    case 'READY_FOR_PICK_UP':
+      return 'ready';
+    case 'DELIVERED':
+    case 'IN_DELIVERY':
+      return 'pickedUp';
+    default:
+      return 'other';
+  }
+};
+
+const getRelativeTime = (value: string): string => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMinutes = Math.max(Math.floor(diffMs / 60000), 0);
+
+  if (diffMinutes < 1) {
+    return 'Just now';
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min${diffMinutes === 1 ? '' : 's'} ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) {
+    return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  }
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return `${diffMonths} month${diffMonths === 1 ? '' : 's'} ago`;
+  }
+
+  const diffYears = Math.floor(diffMonths / 12);
+  return `${diffYears} year${diffYears === 1 ? '' : 's'} ago`;
+};
+
+const formatFullDate = (date: Date): string => {
+  const day = date.getDate();
+  const month = date.toLocaleDateString('en-US', { month: 'long' });
+  const year = date.getFullYear();
+
+  return `${day} ${month} ${year}`;
+};
+
+type OrderListItemProps = {
+  order: OrderNotificationDTO;
+  onPress: (order: OrderNotificationDTO) => void;
+};
+
+const OrderListItem: React.FC<OrderListItemProps> = ({ order, onPress }) => {
+  const category = getStatusCategory(order.status);
+  const meta = STATUS_META[category];
+  const itemsCount = getItemsCount(order.items);
+  const relativeTime = getRelativeTime(order.date);
+
+  return (
+    <View style={styles.orderCard}>
+      <View style={styles.orderHeader}>
+        <Text style={styles.orderNumber}>{`#${order.orderId}`}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: meta.badgeBackground }]}>
+          <Text style={[styles.statusBadgeLabel, { color: meta.badgeText }]}>{meta.label}</Text>
+        </View>
+      </View>
+
+      <View style={styles.orderMetaRow}>
+        <Text style={styles.orderTotal}>{formatCurrency(order.payment.total)}</Text>
+        <Text style={styles.orderTime}>{relativeTime}</Text>
+      </View>
+
+      <Text style={styles.orderItems}>{`${itemsCount} item${itemsCount === 1 ? '' : 's'}`}</Text>
+
+      <TouchableOpacity
+        onPress={() => onPress(order)}
+        activeOpacity={0.85}
+        style={styles.detailsButton}
+      >
+        <Text style={styles.detailsButtonLabel}>See details</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 export const MyOrdersScreen: React.FC = () => {
   const [state, setState] = useState<FetchState>(initialState);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [markingOrderId, setMarkingOrderId] = useState<number | null>(null);
-  const [pickupOrder, setPickupOrder] = useState<OrderNotificationDTO | null>(null);
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   const loadOrders = useCallback(
     async (pageToLoad: number, append: boolean) => {
       setIsLoading(true);
-      setError(null);
 
       try {
         const response: PaginatedResponse<OrderNotificationDTO> = await restaurantApi.getMyOrders({
@@ -214,8 +194,6 @@ export const MyOrdersScreen: React.FC = () => {
           pageSize: response.pageSize,
           totalItems: response.totalItems,
         }));
-      } catch (err) {
-        setError('Unable to load your orders right now. Please try again later.');
       } finally {
         setIsLoading(false);
       }
@@ -245,108 +223,88 @@ export const MyOrdersScreen: React.FC = () => {
     void loadOrders(nextPage, true);
   }, [isLoading, state.items.length, state.page, state.totalItems, loadOrders]);
 
-  const handleMarkReady = useCallback(
-    async (orderId: number) => {
-      setMarkingOrderId(orderId);
-
-      try {
-        const updatedOrder = await restaurantApi.markOrderReady(orderId);
-        setState((prev) => ({
-          ...prev,
-          items: prev.items.map((order) => (order.orderId === orderId ? updatedOrder : order)),
-        }));
-        Alert.alert('Order ready', 'The order is now ready for pickup.');
-      } catch (err) {
-        Alert.alert('Unable to mark as ready', 'Please try again in a moment.');
-      } finally {
-        setMarkingOrderId(null);
-      }
+  const handlePressOrder = useCallback(
+    (order: OrderNotificationDTO) => {
+      navigation.navigate('OrderDetails', { order });
     },
-    []
+    [navigation]
   );
 
-  const handleShowQr = useCallback((order: OrderNotificationDTO) => {
-    if (!order.pickupToken) {
-      Alert.alert(
-        'Pickup code unavailable',
-        'This order does not have a pickup QR code yet. Please try again shortly.'
-      );
-      return;
-    }
+  const todayLabel = useMemo(() => `Today: ${formatFullDate(new Date())}`, []);
 
-    setPickupOrder(order);
-  }, []);
-
-  const handleCloseQr = useCallback(() => {
-    setPickupOrder(null);
-  }, []);
-
-  const renderOrder = useCallback(
-    ({ item }: { item: OrderNotificationDTO }) => (
-      <OrderHistoryCard
-        order={item}
-        onMarkReady={handleMarkReady}
-        onShowQr={handleShowQr}
-        isMarking={markingOrderId === item.orderId}
-      />
-    ),
-    [handleMarkReady, handleShowQr, markingOrderId]
-  );
+  const statusSummary = useMemo(() => {
+    return state.items.reduce(
+      (acc, order) => {
+        const category = getStatusCategory(order.status);
+        if (category === 'preparing') {
+          acc.preparing += 1;
+        } else if (category === 'ready') {
+          acc.ready += 1;
+        } else if (category === 'pickedUp') {
+          acc.pickedUp += 1;
+        }
+        return acc;
+      },
+      { preparing: 0, ready: 0, pickedUp: 0 }
+    );
+  }, [state.items]);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.background} resizeMode="cover">
-      <View style={styles.overlayContainer}>
-        <View pointerEvents="none" style={styles.tintOverlay} />
-        <SafeAreaView style={styles.safeArea}>
-          <StatusBar style="dark" />
-          <View style={styles.screenContent}>
-            <FlatList
-              data={state.items}
-              keyExtractor={(item) => item.orderId.toString()}
-              renderItem={renderOrder}
-              contentContainerStyle={styles.listContent}
-              ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={handleRefresh}
-                  tintColor={colors.primary}
-                  colors={[colors.primary]}
-                />
-              }
-              ListEmptyComponent={() => (
-                <View style={styles.emptyState}>
-                  {isLoading ? (
-                    <ActivityIndicator color={colors.primary} />
-                  ) : (
-                    <Text style={styles.emptyText}>
-                      {error ?? 'No orders found for the selected period.'}
-                    </Text>
-                  )}
-                </View>
-              )}
-              onEndReachedThreshold={0.4}
-              onEndReached={handleLoadMore}
-              ListFooterComponent={() =>
-                state.items.length > 0 && state.items.length < state.totalItems ? (
-                  <View style={styles.footerLoader}>
-                    <ActivityIndicator color={colors.primary} />
-                  </View>
-                ) : null
-              }
-            />
-
-            <FooterNavigation activeKey="orders" />
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <View style={styles.screenContainer}>
+          <View style={styles.header}>
+            <Text style={styles.screenTitle}>My Orders</Text>
+            <Text style={styles.todayLabel}>{todayLabel}</Text>
+            <Text style={styles.statusSummaryText}>
+              <Text style={styles.statusSummaryLabel}>Status </Text>
+              <Text style={styles.statusPreparing}>{`${statusSummary.preparing} Preparing`}</Text>
+              <Text style={styles.statusSeparator}> | </Text>
+              <Text style={styles.statusReady}>{`${statusSummary.ready} Ready`}</Text>
+              <Text style={styles.statusSeparator}> | </Text>
+              <Text style={styles.statusPicked}>{`${statusSummary.pickedUp} Picked up`}</Text>
+            </Text>
           </View>
-        </SafeAreaView>
-      </View>
 
-      <PickupQrModal
-        visible={Boolean(pickupOrder?.pickupToken)}
-        pickupToken={pickupOrder?.pickupToken ?? ''}
-        onDismiss={handleCloseQr}
-      />
+          <FlatList
+            data={state.items}
+            keyExtractor={(item) => item.orderId.toString()}
+            renderItem={({ item }) => <OrderListItem order={item} onPress={handlePressOrder} />}
+            contentContainerStyle={[styles.listContent, state.items.length === 0 && styles.emptyList]}
+            ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
+            showsVerticalScrollIndicator={false}
+            onEndReachedThreshold={0.4}
+            onEndReached={handleLoadMore}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            }
+            ListFooterComponent={() =>
+              state.items.length > 0 && state.items.length < state.totalItems ? (
+                <View style={styles.footerLoader}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={() => (
+              <View style={styles.emptyState}>
+                {isLoading ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Text style={styles.emptyText}>You have no orders yet.</Text>
+                )}
+              </View>
+            )}
+          />
+        </View>
+
+        <FooterNavigation activeKey="orders" />
+      </SafeAreaView>
     </ImageBackground>
   );
 };
@@ -355,214 +313,128 @@ const styles = StyleSheet.create({
   background: {
     flex: 1,
   },
-  overlayContainer: {
-    flex: 1,
-  },
-  tintOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-  },
   safeArea: {
     flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
   },
-  screenContent: {
+  screenContainer: {
     flex: 1,
     paddingHorizontal: moderateScale(20),
-    paddingTop: moderateScale(12),
-    paddingBottom: moderateScale(16),
+    paddingTop: moderateScale(16),
+    paddingBottom: moderateScale(12),
+  },
+  header: {
+    marginBottom: moderateScale(20),
+  },
+  screenTitle: {
+    ...typography.h1,
+    textAlign: 'center',
+    color: colors.primary,
+    marginBottom: moderateScale(8),
+  },
+  todayLabel: {
+    ...typography.bodyMedium,
+    textAlign: 'center',
+    color: colors.textSecondary,
+    marginBottom: moderateScale(6),
+  },
+  statusSummaryText: {
+    ...typography.bodyStrong,
+    textAlign: 'center',
+    color: colors.textSecondary,
+  },
+  statusSummaryLabel: {
+    color: colors.textSecondary,
+  },
+  statusSeparator: {
+    color: colors.textSecondary,
+  },
+  statusPreparing: {
+    color: colors.primary,
+  },
+  statusReady: {
+    color: colors.textPrimary,
+  },
+  statusPicked: {
+    color: colors.success,
   },
   listContent: {
-    paddingBottom: moderateScale(24),
+    paddingBottom: moderateScale(120),
+  },
+  emptyList: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   listSeparator: {
-    height: moderateScale(24),
+    height: moderateScale(12),
+  },
+  footerLoader: {
+    paddingVertical: moderateScale(20),
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: moderateScale(48),
+    paddingVertical: moderateScale(40),
   },
   emptyText: {
     ...typography.bodyMedium,
-    textAlign: 'center',
     color: colors.textSecondary,
-  },
-  footerLoader: {
-    paddingVertical: moderateScale(20),
+    textAlign: 'center',
   },
   orderCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
-    borderRadius: moderateScale(20),
-    paddingVertical: moderateScale(20),
-    paddingHorizontal: moderateScale(20),
-    borderWidth: 1,
-    borderColor: colors.primary,
-    shadowColor: colors.mutedBlack,
-    shadowOpacity: 0.12,
-    shadowRadius: moderateScale(10),
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    backgroundColor: '#F5F5F5',
+    borderRadius: moderateScale(18),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(16),
   },
-  orderHeaderRow: {
+  orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: moderateScale(16),
+    marginBottom: moderateScale(12),
   },
   orderNumber: {
     ...typography.h2,
-    color: colors.navy,
+    color: colors.textPrimary,
   },
-  totalContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  statusBadge: {
+    borderRadius: moderateScale(12),
+    paddingHorizontal: moderateScale(12),
+    paddingVertical: moderateScale(4),
   },
-  totalLabel: {
-    ...typography.bodyStrong,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    color: colors.navy,
-    marginRight: moderateScale(8),
+  statusBadgeLabel: {
+    ...typography.captionStrong,
+    textTransform: 'capitalize',
   },
-  totalBadge: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: moderateScale(14),
-    paddingVertical: moderateScale(8),
-    borderRadius: moderateScale(18),
-    minWidth: moderateScale(90),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  totalValue: {
-    ...typography.bodyStrong,
-    color: colors.white,
-  },
-  detailsCard: {
-    backgroundColor: colors.white,
-    borderRadius: moderateScale(16),
-    borderWidth: 1,
-    borderColor: colors.primary,
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(18),
-    marginBottom: moderateScale(16),
-  },
-  detailsTitle: {
-    ...typography.h3,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    color: colors.navy,
-  },
-  cardDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.gray,
-    marginVertical: moderateScale(12),
-  },
-  menuRow: {
+  orderMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: moderateScale(14),
-  },
-  menuInfo: {
-    flex: 1,
-    paddingRight: moderateScale(12),
-  },
-  menuHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: moderateScale(4),
-  },
-  quantityLabel: {
-    ...typography.h3,
-    color: colors.primary,
-    marginRight: moderateScale(6),
-  },
-  menuName: {
-    ...typography.bodyStrong,
-    flexShrink: 1,
-    color: colors.navy,
-  },
-  extraLabel: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginBottom: moderateScale(2),
-  },
-  priceColumn: {
-    minWidth: moderateScale(90),
-    alignItems: 'flex-end',
-  },
-  priceLabel: {
-    ...typography.bodyStrong,
-    color: colors.primary,
-  },
-  extraPriceLabel: {
-    ...typography.captionStrong,
-    color: colors.primary,
-  },
-  notesCard: {
-    backgroundColor: colors.white,
-    borderRadius: moderateScale(16),
-    borderWidth: 1,
-    borderColor: colors.primary,
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(18),
-    marginBottom: moderateScale(18),
-  },
-  noteSection: {
-    marginBottom: moderateScale(8),
-  },
-  noteHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: moderateScale(6),
   },
-  noteLabel: {
-    ...typography.bodyStrong,
-    textTransform: 'capitalize',
-    color: colors.navy,
-    marginLeft: moderateScale(8),
+  orderTotal: {
+    ...typography.h3,
+    color: colors.textPrimary,
   },
-  noteValue: {
-    ...typography.bodyMedium,
+  orderTime: {
+    ...typography.bodySmall,
     color: colors.textSecondary,
-    lineHeight: moderateScale(20),
   },
-  noteDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.gray,
-    marginVertical: moderateScale(10),
+  orderItems: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: moderateScale(12),
   },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  actionButton: {
-    flex: 1,
-    height: moderateScale(48),
+  detailsButton: {
+    backgroundColor: colors.primary,
     borderRadius: moderateScale(16),
+    height: moderateScale(44),
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
   },
-  primaryActionButton: {
-    backgroundColor: colors.primary,
-    marginRight: moderateScale(12),
-  },
-  secondaryActionButton: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    gap: moderateScale(8),
-  },
-  primaryActionLabel: {
+  detailsButtonLabel: {
     ...typography.button,
     color: colors.white,
   },
-  secondaryActionLabel: {
-    ...typography.button,
-    color: colors.primary,
-  },
 });
-
