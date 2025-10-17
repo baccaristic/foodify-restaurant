@@ -20,4 +20,6 @@ declare module 'lucide-react-native' {
   export const QrCode: LucideIcon;
   export const Plus: LucideIcon;
   export const Trash2: LucideIcon;
+  export const Pencil: LucideIcon;
+  export const X: LucideIcon;
 }

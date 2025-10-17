@@ -4,10 +4,10 @@ import {
   Alert,
   ImageBackground,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,81 +16,77 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useNavigation } from '@react-navigation/native';
-import { moderateScale } from 'react-native-size-matters';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react-native';
 import type { StackNavigationProp } from '@react-navigation/stack';
+import { moderateScale } from 'react-native-size-matters';
+import { ArrowLeft, Pencil, Plus, Trash2, X } from 'lucide-react-native';
 import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
 import type { RootStackParamList } from '../navigation';
 import type { CategoryDTO, OptionGroupRequestDTO } from '../types/api';
 
 const backgroundImage = require('../../assets/background.png');
 
-const createUniqueId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+const createId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 
-type FieldName = 'name' | 'description' | 'price' | 'promotionLabel' | 'promotionPrice';
+interface ExtraForm {
+  id: string;
+  name: string;
+  price: string;
+}
 
-const initialValues: Record<FieldName, string> = {
-  name: '',
-  description: '',
-  price: '',
-  promotionLabel: '',
-  promotionPrice: '',
-};
-
-type ImageField = { id: string; value: string };
-
-type ExtraForm = { id: string; name: string; price: string; isDefault: boolean };
-
-type OptionGroupForm = {
+interface OptionGroupForm {
   id: string;
   name: string;
   minSelect: string;
   maxSelect: string;
-  required: boolean;
   extras: ExtraForm[];
-};
+}
 
 export const AddDishScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const [values, setValues] = useState(initialValues);
-  const [popular, setPopular] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldName, string>>>({});
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [promotionActive, setPromotionActive] = useState(false);
+  const [dishName, setDishName] = useState('');
+  const [description, setDescription] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
-  const [categoriesError, setCategoriesError] = useState<string | null>(null);
-  const [categoriesLoadError, setCategoriesLoadError] = useState<string | null>(null);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [imageUrls, setImageUrls] = useState<ImageField[]>([{ id: createUniqueId(), value: '' }]);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; description?: string }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [showEditCategoriesModal, setShowEditCategoriesModal] = useState(false);
+  const [showAddonModal, setShowAddonModal] = useState(false);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [optionGroups, setOptionGroups] = useState<OptionGroupForm[]>([]);
+  const [showManageAddonsModal, setShowManageAddonsModal] = useState(false);
 
-  const handleGoBack = useCallback(() => {
-    navigation.goBack();
-  }, [navigation]);
+  const sortedCategories = useMemo(
+    () => [...categories].sort((a, b) => a.name.localeCompare(b.name)),
+    [categories]
+  );
+
+  const selectedCategories = useMemo(
+    () => sortedCategories.filter((category) => selectedCategoryIds.includes(category.id)),
+    [selectedCategoryIds, sortedCategories]
+  );
 
   const loadCategories = useCallback(async () => {
     setIsLoadingCategories(true);
-    setCategoriesLoadError(null);
+    setCategoriesError(null);
 
     try {
       const response = await restaurantApi.getCategories();
       const sanitized = response
         .filter((category) => category.name?.trim().length)
         .map((category) => ({ ...category, name: category.name.trim() }));
-      const sorted = sanitized.sort((a, b) => a.name.localeCompare(b.name));
-      setCategories(sorted);
-      setSelectedCategoryIds((previous) =>
-        previous.filter((id) => sorted.some((category) => category.id === id))
+      setCategories(sanitized);
+      setSelectedCategoryIds((prev) =>
+        prev.filter((id) => sanitized.some((category) => category.id === id))
       );
     } catch (error) {
       setCategories([]);
-      setCategoriesLoadError('Unable to load categories right now.');
+      setCategoriesError('Unable to load categories right now.');
     } finally {
       setIsLoadingCategories(false);
     }
@@ -100,22 +96,12 @@ export const AddDishScreen: React.FC = () => {
     void loadCategories();
   }, [loadCategories]);
 
-  const handleRefreshCategories = useCallback(() => {
-    void loadCategories();
-  }, [loadCategories]);
-
-  const handleChange = useCallback((field: FieldName, value: string) => {
-    setValues((previous) => ({ ...previous, [field]: value }));
-    setFieldErrors((previous) => ({ ...previous, [field]: undefined }));
-    setSubmitError(null);
-  }, []);
+  const handleGoBack = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
 
   const handleToggleCategory = useCallback(
     (categoryId: number) => {
-      if (isSubmitting) {
-        return;
-      }
-
       setSelectedCategoryIds((previous) => {
         if (previous.includes(categoryId)) {
           return previous.filter((id) => id !== categoryId);
@@ -126,418 +112,142 @@ export const AddDishScreen: React.FC = () => {
       setCategoriesError(null);
       setSubmitError(null);
     },
-    [isSubmitting]
-  );
-
-  const handleNewCategoryChange = useCallback((text: string) => {
-    setNewCategoryName(text);
-    setCategoriesError(null);
-    setSubmitError(null);
-  }, []);
-
-  const handleCreateCategory = useCallback(async () => {
-    if (isCreatingCategory || isSubmitting) {
-      return;
-    }
-
-    const trimmedName = newCategoryName.trim();
-
-    if (!trimmedName) {
-      setCategoriesError('Enter a category name to add it.');
-      return;
-    }
-
-    if (
-      categories.some(
-        (category) => category.name.toLowerCase() === trimmedName.toLowerCase()
-      )
-    ) {
-      setCategoriesError('That category already exists.');
-      return;
-    }
-
-    setIsCreatingCategory(true);
-    setCategoriesError(null);
-    setSubmitError(null);
-
-    try {
-      const created = await restaurantApi.createCategory(trimmedName);
-      setCategories((previous) => {
-        const next = [...previous, { ...created, name: created.name.trim() }];
-        return next.sort((a, b) => a.name.localeCompare(b.name));
-      });
-      setSelectedCategoryIds((previous) => {
-        if (previous.includes(created.id)) {
-          return previous;
-        }
-
-        return [...previous, created.id];
-      });
-      setNewCategoryName('');
-    } catch (error) {
-      setCategoriesError('Unable to create a category right now.');
-    } finally {
-      setIsCreatingCategory(false);
-    }
-  }, [
-    categories,
-    isCreatingCategory,
-    isSubmitting,
-    newCategoryName,
-    setSubmitError,
-  ]);
-
-  useEffect(() => {
-    if (selectedCategoryIds.length > 0) {
-      setCategoriesError(null);
-    }
-  }, [selectedCategoryIds]);
-
-  const createEmptyExtra = useCallback((): ExtraForm => ({
-    id: createUniqueId(),
-    name: '',
-    price: '',
-    isDefault: false,
-  }), []);
-
-  const createEmptyOptionGroup = useCallback((): OptionGroupForm => ({
-    id: createUniqueId(),
-    name: '',
-    minSelect: '0',
-    maxSelect: '1',
-    required: false,
-    extras: [createEmptyExtra()],
-  }), [createEmptyExtra]);
-
-  const handlePromotionToggle = useCallback(
-    (value: boolean) => {
-      setPromotionActive(value);
-      setSubmitError(null);
-      if (!value) {
-        setValues((previous) => ({
-          ...previous,
-          promotionLabel: '',
-          promotionPrice: '',
-        }));
-        setFieldErrors((previous) => ({
-          ...previous,
-          promotionLabel: undefined,
-          promotionPrice: undefined,
-        }));
-      }
-    },
     []
   );
 
-  const handleImageChange = useCallback((id: string, newValue: string) => {
-    setImageUrls((previous) =>
-      previous.map((image) => (image.id === id ? { ...image, value: newValue } : image))
-    );
+  const handleOpenAddCategoryModal = useCallback(() => {
+    setShowAddCategoryModal(true);
+  }, []);
+
+  const handleCloseAddCategoryModal = useCallback(() => {
+    setShowAddCategoryModal(false);
+  }, []);
+
+  const handleOpenEditCategoriesModal = useCallback(() => {
+    setShowEditCategoriesModal(true);
+  }, []);
+
+  const handleCloseEditCategoriesModal = useCallback(() => {
+    setShowEditCategoriesModal(false);
+  }, []);
+
+  const handleOpenAddonModal = useCallback((groupId: string | null = null) => {
+    setActiveGroupId(groupId);
+    setShowAddonModal(true);
+  }, []);
+
+  const handleCloseAddonModal = useCallback(() => {
+    setActiveGroupId(null);
+    setShowAddonModal(false);
+  }, []);
+
+  const handleOpenManageAddons = useCallback(() => {
+    setShowManageAddonsModal(true);
+  }, []);
+
+  const handleCloseManageAddons = useCallback(() => {
+    setShowManageAddonsModal(false);
+  }, []);
+
+  const handleRemoveGroup = useCallback((groupId: string) => {
+    setOptionGroups((prev) => prev.filter((group) => group.id !== groupId));
     setSubmitError(null);
   }, []);
 
-  const handleAddImageField = useCallback(() => {
-    setImageUrls((previous) => [...previous, { id: createUniqueId(), value: '' }]);
-    setSubmitError(null);
-  }, []);
-
-  const handleRemoveImageField = useCallback((id: string) => {
-    setImageUrls((previous) => {
-      if (previous.length === 1) {
-        return [{ id: createUniqueId(), value: '' }];
+  const upsertGroup = useCallback((group: OptionGroupForm) => {
+    setOptionGroups((prev) => {
+      const exists = prev.some((item) => item.id === group.id);
+      if (exists) {
+        return prev.map((item) => (item.id === group.id ? group : item));
       }
-
-      return previous.filter((image) => image.id !== id);
+      return [...prev, group];
     });
     setSubmitError(null);
   }, []);
 
-  const handleAddOptionGroup = useCallback(() => {
-    setOptionGroups((previous) => [...previous, createEmptyOptionGroup()]);
-    setSubmitError(null);
-  }, [createEmptyOptionGroup]);
-
-  const handleRemoveOptionGroup = useCallback((id: string) => {
-    setOptionGroups((previous) => previous.filter((group) => group.id !== id));
-    setSubmitError(null);
-  }, []);
-
-  const handleOptionGroupFieldChange = useCallback(
-    (id: string, field: 'name' | 'minSelect' | 'maxSelect', value: string) => {
-      setOptionGroups((previous) =>
-        previous.map((group) => (group.id === id ? { ...group, [field]: value } : group))
-      );
-      setSubmitError(null);
-    },
-    []
-  );
-
-  const handleOptionGroupRequiredToggle = useCallback((id: string, required: boolean) => {
-    setOptionGroups((previous) =>
-      previous.map((group) => (group.id === id ? { ...group, required } : group))
-    );
-    setSubmitError(null);
-  }, []);
-
-  const handleAddExtra = useCallback(
-    (groupId: string) => {
-      setOptionGroups((previous) =>
-        previous.map((group) =>
-          group.id === groupId
-            ? { ...group, extras: [...group.extras, createEmptyExtra()] }
-            : group
-        )
-      );
-      setSubmitError(null);
-    },
-    [createEmptyExtra]
-  );
-
-  const handleExtraFieldChange = useCallback(
-    (groupId: string, extraId: string, field: 'name' | 'price', value: string) => {
-      setOptionGroups((previous) =>
-        previous.map((group) => {
-          if (group.id !== groupId) {
-            return group;
-          }
-
-          return {
-            ...group,
-            extras: group.extras.map((extra) =>
-              extra.id === extraId ? { ...extra, [field]: value } : extra
-            ),
-          };
-        })
-      );
-      setSubmitError(null);
-    },
-    []
-  );
-
-  const handleExtraDefaultToggle = useCallback((groupId: string, extraId: string, value: boolean) => {
-    setOptionGroups((previous) =>
-      previous.map((group) => {
-        if (group.id !== groupId) {
-          return group;
-        }
-
-        return {
-          ...group,
-          extras: group.extras.map((extra) =>
-            extra.id === extraId ? { ...extra, isDefault: value } : extra
-          ),
-        };
-      })
-    );
-    setSubmitError(null);
-  }, []);
-
-  const handleRemoveExtra = useCallback((groupId: string, extraId: string) => {
-    setOptionGroups((previous) =>
-      previous.map((group) => {
-        if (group.id !== groupId) {
-          return group;
-        }
-
-        if (group.extras.length === 1) {
-          return {
-            ...group,
-            extras: [createEmptyExtra()],
-          };
-        }
-
-        return {
-          ...group,
-          extras: group.extras.filter((extra) => extra.id !== extraId),
-        };
-      })
-    );
-    setSubmitError(null);
-  }, [createEmptyExtra]);
-
-  const isSubmitDisabled = useMemo(() => {
-    if (isSubmitting) {
-      return true;
-    }
-
-    if (
-      !values.name.trim() ||
-      !values.description.trim() ||
-      values.price.trim().length === 0 ||
-      selectedCategoryIds.length === 0
-    ) {
-      return true;
-    }
-
-    if (promotionActive) {
-      if (!values.promotionLabel.trim() || values.promotionPrice.trim().length === 0) {
-        return true;
-      }
-    }
-
-    return false;
-  }, [
-    isSubmitting,
-    promotionActive,
-    selectedCategoryIds,
-    values.description,
-    values.name,
-    values.price,
-    values.promotionLabel,
-    values.promotionPrice,
-  ]);
-
   const handleSubmit = useCallback(async () => {
-    if (isSubmitting) {
-      return;
-    }
+    const trimmedName = dishName.trim();
+    const trimmedDescription = description.trim();
+    const trimmedImageUrl = imageUrl.trim();
 
-    const errors: Partial<Record<FieldName, string>> = {};
-
-    const trimmedName = values.name.trim();
-    const trimmedDescription = values.description.trim();
-    const normalizedPrice = values.price.replace(',', '.');
-    const parsedPrice = Number.parseFloat(normalizedPrice);
+    const errors: { name?: string; description?: string } = {};
 
     if (!trimmedName) {
-      errors.name = 'Please enter a dish name.';
+      errors.name = 'Dish name is required.';
     }
 
     if (!trimmedDescription) {
-      errors.description = 'Please describe the dish.';
-    }
-
-    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-      errors.price = 'Add a valid price above 0.';
-    }
-
-    let trimmedPromotionLabel: string | null = null;
-    let parsedPromotionPrice: number | null = null;
-
-    let hasError = false;
-
-    if (promotionActive) {
-      trimmedPromotionLabel = values.promotionLabel.trim();
-      const normalizedPromotionPrice = values.promotionPrice.replace(',', '.');
-      parsedPromotionPrice = Number.parseFloat(normalizedPromotionPrice);
-
-      if (!trimmedPromotionLabel) {
-        errors.promotionLabel = 'Add a short label for the promotion.';
-      }
-
-      if (!Number.isFinite(parsedPromotionPrice) || parsedPromotionPrice <= 0) {
-        errors.promotionPrice = 'Enter a valid promotional price.';
-      } else if (Number.isFinite(parsedPrice) && parsedPromotionPrice >= parsedPrice) {
-        errors.promotionPrice = 'Promotional price must be lower than the dish price.';
-      }
-    }
-
-    if (Object.keys(errors).length > 0) {
-      hasError = true;
+      errors.description = 'Dish description is required.';
     }
 
     if (selectedCategoryIds.length === 0) {
-      setCategoriesError('Select at least one category.');
-      hasError = true;
-    } else {
-      setCategoriesError(null);
+      setCategoriesError('Please choose at least one category.');
     }
 
-    setFieldErrors(errors);
-
-    if (hasError) {
-      setSubmitError('Please fix the highlighted fields.');
+    if (Object.keys(errors).length > 0 || selectedCategoryIds.length === 0) {
+      setFieldErrors(errors);
       return;
     }
 
-    const sanitizedImageUrls = imageUrls
-      .map((item) => item.value.trim())
-      .filter((value) => value.length > 0);
+    const optionPayload: OptionGroupRequestDTO[] = [];
 
-    let parsedOptionGroups: OptionGroupRequestDTO[] | undefined;
+    for (const group of optionGroups) {
+      const trimmedGroupName = group.name.trim();
+      const parsedMin = Number.parseInt(group.minSelect, 10);
+      const parsedMax = Number.parseInt(group.maxSelect, 10);
 
-    if (optionGroups.length > 0) {
-      const mappedGroups: OptionGroupRequestDTO[] = [];
+      if (!trimmedGroupName) {
+        setSubmitError('Every add-on group needs a name.');
+        return;
+      }
 
-      for (const group of optionGroups) {
-        const trimmedGroupName = group.name.trim();
-        const hasGroupContent =
-          trimmedGroupName.length > 0 ||
-          group.extras.some((extra) => extra.name.trim().length > 0 || extra.price.trim().length > 0);
+      if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax) || parsedMin < 0 || parsedMax < 0) {
+        setSubmitError('Add-on limits must be positive numbers.');
+        return;
+      }
 
-        if (!hasGroupContent) {
-          continue;
-        }
+      if (parsedMin > parsedMax) {
+        setSubmitError('Min selections cannot exceed max selections.');
+        return;
+      }
 
-        const parsedMinSelect = Number.parseInt(group.minSelect, 10);
-        const parsedMaxSelect = Number.parseInt(group.maxSelect, 10);
+      const extras: OptionGroupRequestDTO['extras'] = [];
 
-        if (!trimmedGroupName) {
-          setSubmitError('Please enter a name for each customization group.');
+      for (const extra of group.extras) {
+        const trimmedExtraName = extra.name.trim();
+        const normalizedPrice = extra.price.replace(',', '.');
+        const parsedPrice = normalizedPrice.length ? Number.parseFloat(normalizedPrice) : 0;
+
+        if (!trimmedExtraName) {
+          setSubmitError('Every add-on needs a name.');
           return;
         }
 
-        if (
-          !Number.isFinite(parsedMinSelect) ||
-          !Number.isFinite(parsedMaxSelect) ||
-          parsedMinSelect < 0 ||
-          parsedMaxSelect < 0
-        ) {
-          setSubmitError('Customization limits must be zero or greater.');
+        if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+          setSubmitError('Extra charges must be zero or greater.');
           return;
         }
 
-        if (parsedMinSelect > parsedMaxSelect) {
-          setSubmitError('Minimum selections cannot exceed the maximum.');
-          return;
-        }
-
-        const parsedExtras: OptionGroupRequestDTO['extras'] = [];
-
-        for (const extra of group.extras) {
-          const trimmedExtraName = extra.name.trim();
-          const normalizedExtraPrice = extra.price.replace(',', '.');
-          const parsedExtraPrice = Number.parseFloat(normalizedExtraPrice);
-          const hasExtraContent = trimmedExtraName.length > 0 || extra.price.trim().length > 0;
-
-          if (!hasExtraContent) {
-            continue;
-          }
-
-          if (!trimmedExtraName) {
-            setSubmitError('Please provide a name for every option in a group.');
-            return;
-          }
-
-          if (!Number.isFinite(parsedExtraPrice) || parsedExtraPrice < 0) {
-            setSubmitError('Option prices must be zero or greater.');
-            return;
-          }
-
-          parsedExtras.push({
-            name: trimmedExtraName,
-            price: parsedExtraPrice,
-            isDefault: extra.isDefault,
-          });
-        }
-
-        if (parsedExtras.length === 0) {
-          setSubmitError('Add at least one option to every customization group.');
-          return;
-        }
-
-        mappedGroups.push({
-          name: trimmedGroupName,
-          minSelect: parsedMinSelect,
-          maxSelect: parsedMaxSelect,
-          required: group.required,
-          extras: parsedExtras,
+        extras.push({
+          name: trimmedExtraName,
+          price: parsedPrice,
+          isDefault: false,
         });
       }
 
-      if (mappedGroups.length > 0) {
-        parsedOptionGroups = mappedGroups;
+      if (extras.length === 0) {
+        setSubmitError('Add at least one add-on option.');
+        return;
       }
+
+      optionPayload.push({
+        id: group.id.includes('-') ? undefined : Number.parseInt(group.id, 10),
+        name: trimmedGroupName,
+        minSelect: parsedMin,
+        maxSelect: parsedMax,
+        required: false,
+        extras,
+      });
     }
 
     setFieldErrors({});
@@ -549,14 +259,14 @@ export const AddDishScreen: React.FC = () => {
         {
           name: trimmedName,
           description: trimmedDescription,
-          price: parsedPrice,
+          price: 0,
           categories: selectedCategoryIds,
-          popular,
-          promotionActive,
-          promotionLabel: promotionActive ? trimmedPromotionLabel : null,
-          promotionPrice: promotionActive ? parsedPromotionPrice : null,
-          imageUrls: sanitizedImageUrls.length > 0 ? sanitizedImageUrls : undefined,
-          optionGroups: parsedOptionGroups,
+          popular: false,
+          promotionActive: false,
+          promotionLabel: null,
+          promotionPrice: null,
+          imageUrls: trimmedImageUrl ? [trimmedImageUrl] : undefined,
+          optionGroups: optionPayload.length ? optionPayload : undefined,
         },
         undefined
       );
@@ -570,19 +280,18 @@ export const AddDishScreen: React.FC = () => {
       setIsSubmitting(false);
     }
   }, [
+    description,
+    dishName,
     handleGoBack,
-    imageUrls,
-    isSubmitting,
+    imageUrl,
     optionGroups,
-    popular,
-    promotionActive,
     selectedCategoryIds,
-    values.description,
-    values.name,
-    values.price,
-    values.promotionLabel,
-    values.promotionPrice,
   ]);
+
+  const activeGroup = useMemo(
+    () => optionGroups.find((group) => group.id === activeGroupId) ?? null,
+    [activeGroupId, optionGroups]
+  );
 
   return (
     <ImageBackground
@@ -596,44 +305,55 @@ export const AddDishScreen: React.FC = () => {
         <SafeAreaView style={styles.safeArea}>
           <StatusBar style="dark" />
           <View style={styles.header}>
-            <TouchableOpacity onPress={handleGoBack} style={styles.backButton} activeOpacity={0.85}>
-              <ArrowLeft color={colors.navy} size={moderateScale(22)} />
+            <TouchableOpacity
+              onPress={handleGoBack}
+              style={styles.headerButton}
+              activeOpacity={0.85}
+              disabled={isSubmitting}
+            >
+              <ArrowLeft color={colors.primary} size={moderateScale(22)} />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Add a Dish</Text>
+            <Text style={styles.headerTitle}>My Menu</Text>
             <View style={styles.headerSpacer} />
           </View>
 
           <KeyboardAvoidingView
-            style={styles.formWrapper}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.keyboardAvoider}
           >
             <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.content}
-              keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
             >
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>Dish name</Text>
                 <TextInput
-                  value={values.name}
-                  onChangeText={(text) => handleChange('name', text)}
-                  placeholder="Ex. Dragon Roll"
+                  value={dishName}
+                  onChangeText={(text) => {
+                    setDishName(text);
+                    setFieldErrors((prev) => ({ ...prev, name: undefined }));
+                    setSubmitError(null);
+                  }}
+                  placeholder="dish name"
                   placeholderTextColor={colors.textSecondary}
                   style={[styles.input, fieldErrors.name && styles.inputError]}
                   autoCapitalize="words"
-                  returnKeyType="next"
                   editable={!isSubmitting}
                 />
-                {fieldErrors.name ? <Text style={styles.fieldErrorText}>{fieldErrors.name}</Text> : null}
+                {fieldErrors.name ? <Text style={styles.errorText}>{fieldErrors.name}</Text> : null}
               </View>
 
               <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Description</Text>
+                <Text style={styles.label}>Dish description</Text>
                 <TextInput
-                  value={values.description}
-                  onChangeText={(text) => handleChange('description', text)}
-                  placeholder="What makes this dish special?"
+                  value={description}
+                  onChangeText={(text) => {
+                    setDescription(text);
+                    setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                    setSubmitError(null);
+                  }}
+                  placeholder="Description"
                   placeholderTextColor={colors.textSecondary}
                   style={[styles.input, styles.multilineInput, fieldErrors.description && styles.inputError]}
                   multiline
@@ -642,431 +362,738 @@ export const AddDishScreen: React.FC = () => {
                   editable={!isSubmitting}
                 />
                 {fieldErrors.description ? (
-                  <Text style={styles.fieldErrorText}>{fieldErrors.description}</Text>
+                  <Text style={styles.errorText}>{fieldErrors.description}</Text>
                 ) : null}
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Price (DT)</Text>
-                <TextInput
-                  value={values.price}
-                  onChangeText={(text) => handleChange('price', text)}
-                  placeholder="0.00"
-                  placeholderTextColor={colors.textSecondary}
-                  style={[styles.input, fieldErrors.price && styles.inputError]}
-                  keyboardType="decimal-pad"
-                  returnKeyType="done"
-                  editable={!isSubmitting}
-                />
-                {fieldErrors.price ? <Text style={styles.fieldErrorText}>{fieldErrors.price}</Text> : null}
               </View>
 
               <View style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Categories</Text>
-                  <TouchableOpacity
-                    onPress={handleRefreshCategories}
-                    style={styles.inlineAction}
-                    activeOpacity={0.85}
-                    disabled={isLoadingCategories}
-                  >
-                    <Text
-                      style={[
-                        styles.inlineActionText,
-                        isLoadingCategories && styles.inlineActionTextDisabled,
-                      ]}
+                  <Text style={styles.sectionLabel}>Category</Text>
+                  <View style={styles.sectionActions}>
+                    <TouchableOpacity
+                      style={styles.sectionAction}
+                      onPress={handleOpenAddCategoryModal}
+                      activeOpacity={0.85}
+                      disabled={isSubmitting}
                     >
-                      Refresh
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.sectionSubtitle}>
-                  Select every category that matches this dish.
-                </Text>
-
-                {isLoadingCategories ? (
-                  <View style={styles.categoriesLoader}>
-                    <ActivityIndicator color={colors.primary} />
+                      <Plus color={colors.primary} size={moderateScale(16)} />
+                      <Text style={styles.sectionActionText}>add Category</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sectionAction, styles.sectionActionSpacing]}
+                      onPress={handleOpenEditCategoriesModal}
+                      activeOpacity={0.85}
+                      disabled={isSubmitting || selectedCategoryIds.length === 0}
+                    >
+                      <Pencil color={colors.primary} size={moderateScale(16)} />
+                      <Text style={styles.sectionActionText}>edit</Text>
+                    </TouchableOpacity>
                   </View>
-                ) : categoriesLoadError ? (
-                  <TouchableOpacity
-                    onPress={handleRefreshCategories}
-                    activeOpacity={0.85}
-                    style={styles.categoriesError}
-                  >
-                    <Text style={styles.fieldErrorText}>{categoriesLoadError}</Text>
-                    <Text style={styles.retryHintText}>Tap to try again</Text>
-                  </TouchableOpacity>
-                ) : categories.length === 0 ? (
-                  <Text style={styles.emptyHelperText}>
-                    No categories yet. Create one below to get started.
-                  </Text>
-                ) : (
-                  <View style={styles.categoryPillGroup}>
-                    {categories.map((category) => {
+                </View>
+
+                <View style={styles.categoryChips}>
+                  {isLoadingCategories ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : sortedCategories.length === 0 ? (
+                    <Text style={styles.emptyText}>No categories yet.</Text>
+                  ) : (
+                    sortedCategories.map((category) => {
                       const isSelected = selectedCategoryIds.includes(category.id);
                       return (
                         <TouchableOpacity
                           key={category.id}
                           onPress={() => handleToggleCategory(category.id)}
+                          style={[styles.chip, isSelected && styles.chipSelected]}
                           activeOpacity={0.85}
-                          style={[
-                            styles.categoryPill,
-                            isSelected && styles.categoryPillActive,
-                          ]}
                           disabled={isSubmitting}
                         >
-                          <Text
-                            style={[
-                              styles.categoryPillText,
-                              isSelected && styles.categoryPillTextActive,
-                            ]}
-                          >
+                          <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
                             {category.name}
                           </Text>
                         </TouchableOpacity>
                       );
-                    })}
-                  </View>
-                )}
-
-                {categoriesError ? (
-                  <Text style={styles.fieldErrorText}>{categoriesError}</Text>
-                ) : null}
-
-                <View style={styles.newCategoryRow}>
-                  <TextInput
-                    value={newCategoryName}
-                    onChangeText={handleNewCategoryChange}
-                    placeholder="New category name"
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.input, styles.inlineInput]}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    editable={!isCreatingCategory && !isSubmitting}
-                    returnKeyType="done"
-                    onSubmitEditing={handleCreateCategory}
-                  />
-                  <TouchableOpacity
-                    onPress={handleCreateCategory}
-                    activeOpacity={0.85}
-                    style={[
-                      styles.addCategoryButton,
-                      (isCreatingCategory ||
-                        isSubmitting ||
-                        newCategoryName.trim().length === 0) &&
-                        styles.addCategoryButtonDisabled,
-                    ]}
-                    disabled={
-                      isCreatingCategory || isSubmitting || newCategoryName.trim().length === 0
-                    }
-                  >
-                    {isCreatingCategory ? (
-                      <ActivityIndicator color={colors.white} />
-                    ) : (
-                      <>
-                        <Plus color={colors.white} size={moderateScale(16)} />
-                        <Text style={styles.addCategoryButtonText}>Add</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                    })
+                  )}
                 </View>
-                <Text style={styles.emptyHelperText}>
-                  Add a new category if you don&apos;t see it listed.
-                </Text>
-              </View>
 
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={styles.switchTitle}>Mark as popular</Text>
-                  <Text style={styles.switchSubtitle}>Highlight this dish at the top of your menu.</Text>
-                </View>
-                <Switch
-                  value={popular}
-                  onValueChange={setPopular}
-                  thumbColor={popular ? colors.white : '#E2E6EA'}
-                  trackColor={{ false: '#D7DDE5', true: colors.primary }}
-                  disabled={isSubmitting}
-                />
-              </View>
-
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={styles.switchTitle}>Run a promotion</Text>
-                  <Text style={styles.switchSubtitle}>
-                    Display a promotional badge and discounted price for this dish.
-                  </Text>
-                </View>
-                <Switch
-                  value={promotionActive}
-                  onValueChange={handlePromotionToggle}
-                  thumbColor={promotionActive ? colors.white : '#E2E6EA'}
-                  trackColor={{ false: '#D7DDE5', true: colors.primary }}
-                  disabled={isSubmitting}
-                />
-              </View>
-
-              {promotionActive ? (
-                <View style={styles.promotionFields}>
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Promotion label</Text>
-                    <TextInput
-                      value={values.promotionLabel}
-                      onChangeText={(text) => handleChange('promotionLabel', text)}
-                      placeholder="Ex. Limited time"
-                      placeholderTextColor={colors.textSecondary}
-                      style={[styles.input, fieldErrors.promotionLabel && styles.inputError]}
-                      editable={!isSubmitting}
-                    />
-                    {fieldErrors.promotionLabel ? (
-                      <Text style={styles.fieldErrorText}>{fieldErrors.promotionLabel}</Text>
-                    ) : null}
-                  </View>
-
-                  <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Promotion price (DT)</Text>
-                    <TextInput
-                      value={values.promotionPrice}
-                      onChangeText={(text) => handleChange('promotionPrice', text)}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.textSecondary}
-                      style={[styles.input, fieldErrors.promotionPrice && styles.inputError]}
-                      keyboardType="decimal-pad"
-                      editable={!isSubmitting}
-                    />
-                    {fieldErrors.promotionPrice ? (
-                      <Text style={styles.fieldErrorText}>{fieldErrors.promotionPrice}</Text>
-                    ) : null}
-                  </View>
-                </View>
-              ) : null}
-
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionTitle}>Dish photos</Text>
-                <Text style={styles.sectionSubtitle}>
-                  Paste hosted image links so guests can see what they are ordering.
-                </Text>
-
-                {imageUrls.map((imageField, index) => (
-                  <View key={imageField.id} style={styles.inlineField}>
-                    <TextInput
-                      value={imageField.value}
-                      onChangeText={(text) => handleImageChange(imageField.id, text)}
-                      placeholder={`Image URL ${index + 1}`}
-                      placeholderTextColor={colors.textSecondary}
-                      style={[styles.input, styles.inlineInput]}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      editable={!isSubmitting}
-                    />
-                    {imageUrls.length > 1 ? (
-                      <TouchableOpacity
-                        onPress={() => handleRemoveImageField(imageField.id)}
-                        style={styles.iconButton}
-                        activeOpacity={0.85}
-                        disabled={isSubmitting}
-                      >
-                        <Trash2 color={colors.navy} size={moderateScale(18)} />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ))}
-
-                <TouchableOpacity
-                  onPress={handleAddImageField}
-                  style={styles.inlineAction}
-                  activeOpacity={0.85}
-                  disabled={isSubmitting}
-                >
-                  <Plus color={colors.primary} size={moderateScale(18)} />
-                  <Text style={styles.inlineActionText}>Add another photo</Text>
-                </TouchableOpacity>
+                {categoriesError ? <Text style={styles.errorText}>{categoriesError}</Text> : null}
               </View>
 
               <View style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Customization groups</Text>
-                  <TouchableOpacity
-                    onPress={handleAddOptionGroup}
-                    style={styles.inlineAction}
-                    activeOpacity={0.85}
-                    disabled={isSubmitting}
-                  >
-                    <Plus color={colors.primary} size={moderateScale(18)} />
-                    <Text style={styles.inlineActionText}>Add group</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.sectionLabel}>Add-ons</Text>
+                  <View style={styles.sectionActions}>
+                    <TouchableOpacity
+                      style={styles.sectionAction}
+                      onPress={() => handleOpenAddonModal(null)}
+                      activeOpacity={0.85}
+                      disabled={isSubmitting}
+                    >
+                      <Plus color={colors.primary} size={moderateScale(16)} />
+                      <Text style={styles.sectionActionText}>add modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sectionAction, styles.sectionActionSpacing]}
+                      onPress={handleOpenManageAddons}
+                      activeOpacity={0.85}
+                      disabled={isSubmitting || optionGroups.length === 0}
+                    >
+                      <Pencil color={colors.primary} size={moderateScale(16)} />
+                      <Text style={styles.sectionActionText}>edit</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={styles.sectionSubtitle}>
-                  Offer add-ons, sides, or choices. Each group can require guests to pick items.
-                </Text>
 
                 {optionGroups.length === 0 ? (
-                  <Text style={styles.emptyHelperText}>
-                    You haven&apos;t added any customization groups yet.
-                  </Text>
+                  <Text style={styles.emptyText}>No add-ons yet.</Text>
                 ) : (
-                  optionGroups.map((group, groupIndex) => (
-                    <View key={group.id} style={styles.optionGroupCard}>
-                      <View style={styles.optionGroupHeader}>
-                        <Text style={styles.optionGroupTitle}>{`Group ${groupIndex + 1}`}</Text>
-                        <TouchableOpacity
-                          onPress={() => handleRemoveOptionGroup(group.id)}
-                          style={styles.iconButton}
-                          activeOpacity={0.85}
-                          disabled={isSubmitting}
-                        >
-                          <Trash2 color={colors.navy} size={moderateScale(18)} />
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.fieldGroup}>
-                        <Text style={styles.label}>Group name</Text>
-                        <TextInput
-                          value={group.name}
-                          onChangeText={(text) =>
-                            handleOptionGroupFieldChange(group.id, 'name', text)
-                          }
-                          placeholder="Ex. Choose your base"
-                          placeholderTextColor={colors.textSecondary}
-                          style={styles.input}
-                          editable={!isSubmitting}
-                        />
-                      </View>
-
-                      <View style={styles.fieldRow}>
-                        <View style={styles.rowField}>
-                          <Text style={styles.label}>Min selections</Text>
-                          <TextInput
-                            value={group.minSelect}
-                            onChangeText={(text) =>
-                              handleOptionGroupFieldChange(group.id, 'minSelect', text)
-                            }
-                            placeholder="0"
-                            placeholderTextColor={colors.textSecondary}
-                            style={styles.input}
-                            keyboardType="number-pad"
-                            editable={!isSubmitting}
-                          />
-                        </View>
-
-                        <View style={styles.rowField}>
-                          <Text style={styles.label}>Max selections</Text>
-                          <TextInput
-                            value={group.maxSelect}
-                            onChangeText={(text) =>
-                              handleOptionGroupFieldChange(group.id, 'maxSelect', text)
-                            }
-                            placeholder="1"
-                            placeholderTextColor={colors.textSecondary}
-                            style={styles.input}
-                            keyboardType="number-pad"
-                            editable={!isSubmitting}
-                          />
-                        </View>
-                      </View>
-
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitle}>Selection required</Text>
-                        <Switch
-                          value={group.required}
-                          onValueChange={(value) =>
-                            handleOptionGroupRequiredToggle(group.id, value)
-                          }
-                          thumbColor={group.required ? colors.white : '#E2E6EA'}
-                          trackColor={{ false: '#D7DDE5', true: colors.primary }}
-                          disabled={isSubmitting}
-                        />
-                      </View>
-
-                      <View style={styles.extrasContainer}>
-                        {group.extras.map((extra, extraIndex) => (
-                          <View key={extra.id} style={styles.extraRow}>
-                            <View style={styles.extraFields}>
-                              <Text style={styles.extraTitle}>{`Option ${extraIndex + 1}`}</Text>
-                              <TextInput
-                                value={extra.name}
-                                onChangeText={(text) =>
-                                  handleExtraFieldChange(group.id, extra.id, 'name', text)
-                                }
-                                placeholder="Ex. Brown rice"
-                                placeholderTextColor={colors.textSecondary}
-                                style={[styles.input, styles.extraInput]}
-                                editable={!isSubmitting}
-                              />
-                              <TextInput
-                                value={extra.price}
-                                onChangeText={(text) =>
-                                  handleExtraFieldChange(group.id, extra.id, 'price', text)
-                                }
-                                placeholder="0.00"
-                                placeholderTextColor={colors.textSecondary}
-                                style={[styles.input, styles.extraInput]}
-                                keyboardType="decimal-pad"
-                                editable={!isSubmitting}
-                              />
-                            </View>
-
-                            <View style={styles.extraActions}>
-                              <View style={styles.switchRowSmall}>
-                                <Text style={styles.switchSubtitle}>Default selection</Text>
-                                <Switch
-                                  value={extra.isDefault}
-                                  onValueChange={(value) =>
-                                    handleExtraDefaultToggle(group.id, extra.id, value)
-                                  }
-                                  thumbColor={extra.isDefault ? colors.white : '#E2E6EA'}
-                                  trackColor={{ false: '#D7DDE5', true: colors.primary }}
-                                  disabled={isSubmitting}
-                                />
-                              </View>
-                              {group.extras.length > 1 ? (
-                                <TouchableOpacity
-                                  onPress={() => handleRemoveExtra(group.id, extra.id)}
-                                  style={[styles.iconButton, styles.extraRemoveButton]}
-                                  activeOpacity={0.85}
-                                  disabled={isSubmitting}
-                                >
-                                  <Trash2 color={colors.navy} size={moderateScale(18)} />
-                                </TouchableOpacity>
-                              ) : null}
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-
+                  <View style={styles.categoryChips}>
+                    {optionGroups.map((group) => (
                       <TouchableOpacity
-                        onPress={() => handleAddExtra(group.id)}
-                        style={[styles.inlineAction, styles.addExtraButton]}
+                        key={group.id}
+                        style={styles.chip}
+                        onPress={() => handleOpenAddonModal(group.id)}
                         activeOpacity={0.85}
                         disabled={isSubmitting}
                       >
-                        <Plus color={colors.primary} size={moderateScale(18)} />
-                        <Text style={styles.inlineActionText}>Add option</Text>
+                        <Text style={styles.chipText}>{group.name}</Text>
                       </TouchableOpacity>
-                    </View>
-                  ))
+                    ))}
+                  </View>
                 )}
               </View>
 
-              {submitError ? <Text style={styles.submitErrorText}>{submitError}</Text> : null}
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionLabel}>Image</Text>
+                <View style={styles.uploadArea}>
+                  <TextInput
+                    value={imageUrl}
+                    onChangeText={(text) => {
+                      setImageUrl(text);
+                      setSubmitError(null);
+                    }}
+                    style={styles.uploadInput}
+                    placeholder="Upload image"
+                    placeholderTextColor={colors.primary}
+                    editable={!isSubmitting}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
 
-              <TouchableOpacity
-                style={[styles.submitButton, isSubmitDisabled && styles.submitButtonDisabled]}
-                onPress={handleSubmit}
-                activeOpacity={0.9}
-                disabled={isSubmitDisabled}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <Text style={styles.submitButtonText}>Add dish</Text>
-                )}
-              </TouchableOpacity>
+              {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.ctaButton, styles.cancelButton]}
+                  onPress={handleGoBack}
+                  activeOpacity={0.85}
+                  disabled={isSubmitting}
+                >
+                  <Text style={[styles.ctaText, styles.cancelText]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.ctaButton, styles.saveButton, isSubmitting && styles.disabledButton]}
+                  onPress={handleSubmit}
+                  activeOpacity={0.85}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <Text style={[styles.ctaText, styles.saveText]}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
+
+        <AddCategoryModal
+          visible={showAddCategoryModal}
+          onClose={handleCloseAddCategoryModal}
+          onCreated={(category) => {
+            setCategories((prev) => {
+              const exists = prev.some((item) => item.id === category.id);
+              if (exists) {
+                return prev.map((item) => (item.id === category.id ? category : item));
+              }
+              return [...prev, category];
+            });
+            setSelectedCategoryIds((prev) =>
+              prev.includes(category.id) ? prev : [...prev, category.id]
+            );
+            setCategoriesError(null);
+            setSubmitError(null);
+          }}
+        />
+
+        <EditCategoriesModal
+          visible={showEditCategoriesModal}
+          onClose={handleCloseEditCategoriesModal}
+          categories={selectedCategories}
+          onRemove={(id) => {
+            setSelectedCategoryIds((prev) => prev.filter((categoryId) => categoryId !== id));
+            setCategoriesError(null);
+            setSubmitError(null);
+          }}
+          onCreate={(category) => {
+            setCategories((prev) => {
+              const exists = prev.some((item) => item.id === category.id);
+              if (exists) {
+                return prev.map((item) => (item.id === category.id ? category : item));
+              }
+              return [...prev, category];
+            });
+            setSelectedCategoryIds((prev) =>
+              prev.includes(category.id) ? prev : [...prev, category.id]
+            );
+            setCategoriesError(null);
+            setSubmitError(null);
+          }}
+        />
+
+        <AddonModal
+          visible={showAddonModal}
+          onClose={handleCloseAddonModal}
+          onSave={(group) => {
+            upsertGroup(group);
+            handleCloseAddonModal();
+          }}
+          existingGroup={activeGroup}
+        />
+
+        <ManageAddonsModal
+          visible={showManageAddonsModal}
+          onClose={handleCloseManageAddons}
+          groups={optionGroups}
+          onEdit={(groupId) => {
+            handleCloseManageAddons();
+            handleOpenAddonModal(groupId);
+          }}
+          onRemove={(groupId) => {
+            handleRemoveGroup(groupId);
+          }}
+        />
       </View>
     </ImageBackground>
+  );
+};
+
+interface AddCategoryModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onCreated: (category: CategoryDTO) => void;
+}
+
+const AddCategoryModal: React.FC<AddCategoryModalProps> = ({ visible, onClose, onCreated }) => {
+  const [name, setName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setName('');
+      setError(null);
+      setIsCreating(false);
+    }
+  }, [visible]);
+
+  const handleCreate = useCallback(
+    async (closeAfter: boolean) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        setError('Category name is required.');
+        return;
+      }
+
+      setIsCreating(true);
+      setError(null);
+
+      try {
+        const created = await restaurantApi.createCategory(trimmed);
+        onCreated({ ...created, name: created.name.trim() });
+        setName('');
+        if (closeAfter) {
+          onClose();
+        }
+      } catch (err) {
+        setError('Unable to save category.');
+      } finally {
+        setIsCreating(false);
+      }
+    },
+    [name, onClose, onCreated]
+  );
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add category</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={styles.hitSlop}>
+              <X color={colors.primary} size={moderateScale(18)} />
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={name}
+            onChangeText={(text) => {
+              setName(text);
+              setError(null);
+            }}
+            placeholder="Category name"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.modalInput}
+            editable={!isCreating}
+          />
+          {error ? <Text style={styles.modalError}>{error}</Text> : null}
+          <View style={styles.modalButtonRow}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalGhostButton]}
+              onPress={() => handleCreate(false)}
+              activeOpacity={0.85}
+              disabled={isCreating}
+            >
+              {isCreating ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={[styles.modalButtonText, styles.modalGhostText]}>add another</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalPrimaryButton]}
+              onPress={() => handleCreate(true)}
+              activeOpacity={0.85}
+              disabled={isCreating}
+            >
+              {isCreating ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={[styles.modalButtonText, styles.modalPrimaryText]}>add and save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+interface EditCategoriesModalProps {
+  visible: boolean;
+  onClose: () => void;
+  categories: CategoryDTO[];
+  onRemove: (id: number) => void;
+  onCreate: (category: CategoryDTO) => void;
+}
+
+const EditCategoriesModal: React.FC<EditCategoriesModalProps> = ({
+  visible,
+  onClose,
+  categories,
+  onRemove,
+  onCreate,
+}) => {
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setName('');
+      setError(null);
+      setIsSaving(false);
+    }
+  }, [visible]);
+
+  const handleCreate = useCallback(async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Category name is required.');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const created = await restaurantApi.createCategory(trimmed);
+      onCreate({ ...created, name: created.name.trim() });
+      setName('');
+    } catch (err) {
+      setError('Unable to create category.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [name, onCreate]);
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit category</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={styles.hitSlop}>
+              <X color={colors.primary} size={moderateScale(18)} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+            {categories.length === 0 ? (
+              <Text style={styles.emptyText}>No categories selected.</Text>
+            ) : (
+              categories.map((category) => (
+                <View key={category.id} style={styles.modalListItem}>
+                  <Text style={styles.modalListText}>{category.name}</Text>
+                  <TouchableOpacity onPress={() => onRemove(category.id)} hitSlop={styles.hitSlop}>
+                    <Trash2 color={colors.primary} size={moderateScale(18)} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          <View style={styles.modalInlineRow}>
+            <TextInput
+              value={name}
+              onChangeText={(text) => {
+                setName(text);
+                setError(null);
+              }}
+              placeholder="Add. Ex Drinks"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.modalInput, styles.modalInlineInput]}
+              editable={!isSaving}
+            />
+            <TouchableOpacity
+              style={[styles.inlineAddButton, isSaving && styles.disabledButton]}
+              onPress={handleCreate}
+              activeOpacity={0.85}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Plus color={colors.white} size={moderateScale(16)} />
+              )}
+            </TouchableOpacity>
+          </View>
+          {error ? <Text style={styles.modalError}>{error}</Text> : null}
+
+          <TouchableOpacity
+            style={[styles.modalButton, styles.modalPrimaryButton, styles.modalFullWidthButton]}
+            onPress={onClose}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.modalButtonText, styles.modalPrimaryText]}>save</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+interface AddonModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onSave: (group: OptionGroupForm) => void;
+  existingGroup: OptionGroupForm | null;
+}
+
+const AddonModal: React.FC<AddonModalProps> = ({ visible, onClose, onSave, existingGroup }) => {
+  const [groupName, setGroupName] = useState('');
+  const [addonName, setAddonName] = useState('');
+  const [extraCharge, setExtraCharge] = useState('');
+  const [minSelect, setMinSelect] = useState('0');
+  const [maxSelect, setMaxSelect] = useState('0');
+  const [extras, setExtras] = useState<ExtraForm[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      if (existingGroup) {
+        setGroupName(existingGroup.name);
+        setMinSelect(existingGroup.minSelect);
+        setMaxSelect(existingGroup.maxSelect);
+        setExtras(existingGroup.extras);
+      } else {
+        setGroupName('');
+        setMinSelect('0');
+        setMaxSelect('0');
+        setExtras([]);
+      }
+      setAddonName('');
+      setExtraCharge('');
+      setError(null);
+    } else {
+      setAddonName('');
+      setExtraCharge('');
+    }
+  }, [existingGroup, visible]);
+
+  const handleAddExtra = useCallback(() => {
+    const trimmedName = addonName.trim();
+    if (!trimmedName) {
+      setError('Add-on name is required.');
+      return;
+    }
+
+    setExtras((prev) => [
+      ...prev,
+      {
+        id: createId(),
+        name: trimmedName,
+        price: extraCharge.trim(),
+      },
+    ]);
+
+    setAddonName('');
+    setExtraCharge('');
+    setError(null);
+  }, [addonName, extraCharge]);
+
+  const handleRemoveExtra = useCallback((id: string) => {
+    setExtras((prev) => prev.filter((extra) => extra.id !== id));
+  }, []);
+
+  const handleSave = useCallback(() => {
+    const trimmedGroupName = groupName.trim();
+    if (!trimmedGroupName) {
+      setError('Add-on group is required.');
+      return;
+    }
+
+    if (extras.length === 0) {
+      setError('Add at least one add-on.');
+      return;
+    }
+
+    const parsedMin = Number.parseInt(minSelect, 10);
+    const parsedMax = Number.parseInt(maxSelect, 10);
+
+    if (!Number.isFinite(parsedMin) || !Number.isFinite(parsedMax) || parsedMin < 0 || parsedMax < 0) {
+      setError('Min and max selections must be positive numbers.');
+      return;
+    }
+
+    if (parsedMin > parsedMax) {
+      setError('Min selections cannot exceed max selections.');
+      return;
+    }
+
+    const sanitizedExtras = extras.map((extra) => ({
+      ...extra,
+      name: extra.name.trim(),
+      price: extra.price,
+    }));
+
+    onSave({
+      id: existingGroup?.id ?? createId(),
+      name: trimmedGroupName,
+      minSelect,
+      maxSelect,
+      extras: sanitizedExtras,
+    });
+  }, [existingGroup?.id, extras, groupName, maxSelect, minSelect, onSave]);
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCardLarge}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add Addons</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={styles.hitSlop}>
+              <X color={colors.primary} size={moderateScale(18)} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.addonContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalFieldGroup}>
+              <Text style={styles.modalFieldLabel}>Add-on group *</Text>
+              <TextInput
+                value={groupName}
+                onChangeText={(text) => {
+                  setGroupName(text);
+                  setError(null);
+                }}
+                placeholder="Sauce"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.modalInput}
+              />
+            </View>
+
+            <View style={styles.modalFieldGroup}>
+              <Text style={styles.modalFieldLabel}>Add-on *</Text>
+              <TextInput
+                value={addonName}
+                onChangeText={(text) => {
+                  setAddonName(text);
+                  setError(null);
+                }}
+                placeholder="Ex. Cheesy Sauce"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.modalInput}
+              />
+            </View>
+
+            <View style={styles.modalFieldGroup}>
+              <Text style={styles.modalFieldLabel}>Extra charge</Text>
+              <TextInput
+                value={extraCharge}
+                onChangeText={(text) => {
+                  setExtraCharge(text);
+                  setError(null);
+                }}
+                placeholder="Eg. 3,000dt"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.modalInput}
+                keyboardType="decimal-pad"
+              />
+            </View>
+
+            <View style={styles.modalInlineRow}>
+              <View style={styles.modalHalfField}>
+                <Text style={styles.modalFieldLabel}>Min</Text>
+                <TextInput
+                  value={minSelect}
+                  onChangeText={(text) => {
+                    setMinSelect(text);
+                    setError(null);
+                  }}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.modalInput}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={styles.modalHalfField}>
+                <Text style={styles.modalFieldLabel}>Max</Text>
+                <TextInput
+                  value={maxSelect}
+                  onChangeText={(text) => {
+                    setMaxSelect(text);
+                    setError(null);
+                  }}
+                  placeholder="3"
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.modalInput}
+                  keyboardType="number-pad"
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.inlineAddButton} onPress={handleAddExtra} activeOpacity={0.85}>
+              <Text style={styles.inlineAddButtonText}>add</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.noteText}>
+              NB : keep extra charge empty if you don&apos;t Charge extra money on the add-on
+            </Text>
+
+            {extras.map((extra) => {
+              const trimmed = extra.price.trim();
+              const parsed = trimmed.length
+                ? Number.parseFloat(trimmed.replace(',', '.'))
+                : 0;
+              const hasCharge = trimmed.length > 0 && Number.isFinite(parsed);
+
+              return (
+                <View key={extra.id} style={styles.modalListItem}>
+                  <View>
+                    <Text style={styles.modalListText}>{extra.name}</Text>
+                    <Text style={styles.extraPriceText}>
+                      {hasCharge ? `+ ${parsed} dt` : '+ 0 dt'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleRemoveExtra(extra.id)} hitSlop={styles.hitSlop}>
+                    <Trash2 color={colors.primary} size={moderateScale(18)} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+
+            {error ? <Text style={styles.modalError}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalPrimaryButton, styles.modalFullWidthButton]}
+              onPress={handleSave}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.modalButtonText, styles.modalPrimaryText]}>add and save</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+interface ManageAddonsModalProps {
+  visible: boolean;
+  onClose: () => void;
+  groups: OptionGroupForm[];
+  onEdit: (groupId: string) => void;
+  onRemove: (groupId: string) => void;
+}
+
+const ManageAddonsModal: React.FC<ManageAddonsModalProps> = ({
+  visible,
+  onClose,
+  groups,
+  onEdit,
+  onRemove,
+}) => {
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Manage add-ons</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={styles.hitSlop}>
+              <X color={colors.primary} size={moderateScale(18)} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+            {groups.length === 0 ? (
+              <Text style={styles.emptyText}>No add-ons yet.</Text>
+            ) : (
+              groups.map((group) => (
+                <View key={group.id} style={styles.modalListItem}>
+                  <Text style={styles.modalListText}>{group.name}</Text>
+                  <View style={styles.modalListActions}>
+                    <TouchableOpacity onPress={() => onEdit(group.id)} hitSlop={styles.hitSlop}>
+                      <Pencil color={colors.primary} size={moderateScale(18)} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => onRemove(group.id)}
+                      hitSlop={styles.hitSlop}
+                      style={styles.modalListActionSpacing}
+                    >
+                      <Trash2 color={colors.primary} size={moderateScale(18)} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={[styles.modalButton, styles.modalPrimaryButton, styles.modalFullWidthButton]}
+            onPress={onClose}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.modalButtonText, styles.modalPrimaryText]}>close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
@@ -1075,324 +1102,384 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backgroundImage: {
-    width: '100%',
-    height: '100%',
+    opacity: 0.15,
   },
   overlayContainer: {
     flex: 1,
   },
   tintOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: moderateScale(20),
-    paddingBottom: moderateScale(24),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: moderateScale(16),
+    paddingHorizontal: moderateScale(16),
+    paddingVertical: moderateScale(12),
   },
-  backButton: {
+  headerButton: {
     width: moderateScale(36),
     height: moderateScale(36),
     borderRadius: moderateScale(18),
-    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.navy,
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: moderateScale(8),
-    elevation: 2,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   headerTitle: {
-    ...typography.h2,
-    color: colors.navy,
+    flex: 1,
+    textAlign: 'center',
+    fontSize: moderateScale(18),
+    fontFamily: 'Roboto',
+    fontWeight: '700',
+    color: colors.primary,
   },
   headerSpacer: {
     width: moderateScale(36),
   },
-  formWrapper: {
+  keyboardAvoider: {
     flex: 1,
   },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingBottom: moderateScale(24),
+  scrollContent: {
+    padding: moderateScale(16),
+    paddingBottom: moderateScale(32),
   },
   fieldGroup: {
-    marginBottom: moderateScale(18),
-  },
-  fieldRow: {
-    flexDirection: 'row',
-    gap: moderateScale(16),
-    marginBottom: moderateScale(18),
-  },
-  rowField: {
-    flex: 1,
+    marginBottom: moderateScale(16),
   },
   label: {
-    ...typography.bodySmall,
-    color: colors.navy,
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
     marginBottom: moderateScale(8),
   },
   input: {
-    backgroundColor: colors.white,
-    borderRadius: moderateScale(16),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
-    borderColor: 'rgba(38, 75, 202, 0.18)',
+    borderColor: '#F0D7D5',
+    backgroundColor: colors.white,
     paddingHorizontal: moderateScale(16),
     paddingVertical: moderateScale(12),
-    ...typography.bodyMedium,
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
     color: colors.navy,
   },
   multilineInput: {
     minHeight: moderateScale(120),
   },
   inputError: {
-    borderColor: '#FF6B6B',
+    borderColor: colors.primary,
   },
-  fieldErrorText: {
+  errorText: {
+    color: colors.primary,
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
     marginTop: moderateScale(6),
-    ...typography.bodySmall,
-    color: '#FF6B6B',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.white,
-    borderRadius: moderateScale(20),
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(14),
-    borderWidth: 1,
-    borderColor: 'rgba(38, 75, 202, 0.18)',
-    marginBottom: moderateScale(24),
-  },
-  switchCopy: {
-    flex: 1,
-    marginRight: moderateScale(12),
-  },
-  switchTitle: {
-    ...typography.bodyStrong,
-    color: colors.navy,
-  },
-  switchSubtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: moderateScale(4),
-  },
-  promotionFields: {
-    backgroundColor: colors.white,
-    borderRadius: moderateScale(20),
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(18),
-    borderWidth: 1,
-    borderColor: 'rgba(38, 75, 202, 0.18)',
-    marginBottom: moderateScale(24),
   },
   sectionCard: {
     backgroundColor: colors.white,
-    borderRadius: moderateScale(20),
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(18),
+    borderRadius: moderateScale(16),
+    padding: moderateScale(16),
+    marginBottom: moderateScale(16),
     borderWidth: 1,
-    borderColor: 'rgba(38, 75, 202, 0.18)',
-    marginBottom: moderateScale(24),
+    borderColor: '#F7DCDC',
   },
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: moderateScale(12),
-    gap: moderateScale(12),
-  },
-  sectionTitle: {
-    ...typography.bodyStrong,
-    color: colors.navy,
-  },
-  sectionSubtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginBottom: moderateScale(16),
-  },
-  emptyHelperText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  inlineField: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: moderateScale(12),
     marginBottom: moderateScale(12),
   },
-  inlineInput: {
-    flex: 1,
+  sectionLabel: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
   },
-  iconButton: {
-    width: moderateScale(40),
-    height: moderateScale(40),
-    borderRadius: moderateScale(20),
-    backgroundColor: 'rgba(23, 33, 58, 0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inlineAction: {
+  sectionActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: moderateScale(8),
   },
-  inlineActionText: {
-    ...typography.bodyStrong,
-    color: colors.primary,
-  },
-  inlineActionTextDisabled: {
-    opacity: 0.5,
-  },
-  categoriesLoader: {
+  sectionAction: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: moderateScale(12),
   },
-  categoriesError: {
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
-    borderRadius: moderateScale(16),
-    paddingVertical: moderateScale(12),
-    paddingHorizontal: moderateScale(16),
-    backgroundColor: 'rgba(255, 107, 107, 0.08)',
-    alignItems: 'center',
-    gap: moderateScale(6),
+  sectionActionSpacing: {
+    marginLeft: moderateScale(16),
   },
-  retryHintText: {
-    ...typography.bodySmall,
+  sectionActionText: {
+    marginLeft: moderateScale(6),
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
     color: colors.primary,
+    textTransform: 'capitalize',
   },
-  categoryPillGroup: {
+  categoryChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: moderateScale(10),
+    marginHorizontal: -moderateScale(4),
   },
-  categoryPill: {
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(10),
+  chip: {
+    paddingHorizontal: moderateScale(14),
+    paddingVertical: moderateScale(8),
     borderRadius: moderateScale(20),
     borderWidth: 1,
     borderColor: colors.primary,
     backgroundColor: colors.white,
-  },
-  categoryPillActive: {
-    backgroundColor: colors.primary,
-  },
-  categoryPillText: {
-    ...typography.bodySmall,
-    color: colors.primary,
-  },
-  categoryPillTextActive: {
-    color: colors.white,
-  },
-  newCategoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: moderateScale(12),
-    marginTop: moderateScale(16),
+    marginHorizontal: moderateScale(4),
     marginBottom: moderateScale(8),
   },
-  addCategoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: moderateScale(6),
-    paddingHorizontal: moderateScale(16),
-    paddingVertical: moderateScale(12),
-    borderRadius: moderateScale(16),
+  chipSelected: {
     backgroundColor: colors.primary,
   },
-  addCategoryButtonDisabled: {
-    backgroundColor: 'rgba(38, 75, 202, 0.45)',
+  chipText: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
   },
-  addCategoryButtonText: {
-    ...typography.bodyStrong,
+  chipTextSelected: {
     color: colors.white,
   },
-  optionGroupCard: {
-    borderWidth: 1,
-    borderColor: 'rgba(23, 33, 58, 0.08)',
+  emptyText: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+  },
+  uploadArea: {
     borderRadius: moderateScale(16),
-    padding: moderateScale(14),
-    marginBottom: moderateScale(18),
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderStyle: 'dashed',
+    padding: moderateScale(16),
+    backgroundColor: '#FFF5F5',
   },
-  optionGroupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: moderateScale(12),
+  uploadInput: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
   },
-  optionGroupTitle: {
-    ...typography.bodyStrong,
-    color: colors.navy,
-  },
-  switchRowSmall: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: moderateScale(12),
-    marginBottom: moderateScale(12),
-  },
-  extrasContainer: {
-    gap: moderateScale(16),
-    marginBottom: moderateScale(12),
-  },
-  extraRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: moderateScale(12),
-  },
-  extraFields: {
-    flex: 1,
-    gap: moderateScale(8),
-  },
-  extraTitle: {
-    ...typography.bodyStrong,
-    color: colors.navy,
-  },
-  extraInput: {
-    width: '100%',
-  },
-  extraActions: {
-    alignItems: 'flex-end',
-    gap: moderateScale(12),
-  },
-  extraRemoveButton: {
-    alignSelf: 'flex-end',
-  },
-  addExtraButton: {
-    marginTop: moderateScale(8),
-  },
-  submitErrorText: {
-    ...typography.bodySmall,
-    color: '#FF6B6B',
-    marginBottom: moderateScale(16),
+  submitError: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
     textAlign: 'center',
+    marginBottom: moderateScale(16),
   },
-  submitButton: {
-    height: moderateScale(54),
-    borderRadius: moderateScale(27),
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: -moderateScale(6),
+    marginBottom: moderateScale(32),
+  },
+  ctaButton: {
+    flex: 1,
+    borderRadius: moderateScale(24),
+    paddingVertical: moderateScale(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: moderateScale(6),
+  },
+  cancelButton: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  saveButton: {
     backgroundColor: colors.primary,
+  },
+  disabledButton: {
+    opacity: 0.7,
+  },
+  ctaText: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+  },
+  cancelText: {
+    color: colors.primary,
+  },
+  saveText: {
+    color: colors.white,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: moderateScale(24),
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: moderateScale(20),
+    backgroundColor: colors.white,
+    padding: moderateScale(20),
+  },
+  modalCardLarge: {
+    width: '100%',
+    maxHeight: '80%',
+    borderRadius: moderateScale(20),
+    backgroundColor: colors.white,
+    padding: moderateScale(20),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: moderateScale(16),
+  },
+  modalTitle: {
+    fontSize: moderateScale(16),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
+    textTransform: 'capitalize',
+  },
+  modalInput: {
+    borderRadius: moderateScale(12),
+    borderWidth: 1,
+    borderColor: '#F0D7D5',
+    paddingHorizontal: moderateScale(14),
+    paddingVertical: moderateScale(12),
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
+    color: colors.navy,
+    backgroundColor: colors.white,
+    marginBottom: moderateScale(12),
+  },
+  modalError: {
+    color: colors.primary,
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    marginBottom: moderateScale(12),
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginHorizontal: -moderateScale(6),
+  },
+  modalButton: {
+    flex: 1,
+    borderRadius: moderateScale(16),
+    paddingVertical: moderateScale(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: moderateScale(6),
+  },
+  modalGhostButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  modalGhostText: {
+    color: colors.primary,
+  },
+  modalPrimaryButton: {
+    backgroundColor: colors.primary,
+  },
+  modalPrimaryText: {
+    color: colors.white,
+  },
+  modalButtonText: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  modalList: {
+    maxHeight: moderateScale(180),
+    marginBottom: moderateScale(16),
+  },
+  modalListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: moderateScale(8),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#F0D7D5',
+  },
+  modalListText: {
+    fontSize: moderateScale(14),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.navy,
+  },
+  modalInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: moderateScale(12),
+  },
+  modalInlineInput: {
+    flex: 1,
+    marginBottom: 0,
+    marginRight: moderateScale(12),
+  },
+  inlineAddButton: {
+    backgroundColor: colors.primary,
+    borderRadius: moderateScale(12),
+    paddingVertical: moderateScale(12),
+    paddingHorizontal: moderateScale(24),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  submitButtonDisabled: {
-    backgroundColor: 'rgba(38, 75, 202, 0.35)',
+  inlineAddButtonText: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.white,
+    textTransform: 'uppercase',
   },
-  submitButtonText: {
-    ...typography.button,
+  noteText: {
+    fontSize: moderateScale(11),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+    marginTop: moderateScale(12),
+    marginBottom: moderateScale(12),
+  },
+  extraPriceText: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    color: colors.textSecondary,
+  },
+  modalFieldGroup: {
+    marginBottom: moderateScale(8),
+  },
+  modalFieldLabel: {
+    fontSize: moderateScale(12),
+    fontFamily: 'Roboto',
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: moderateScale(6),
+  },
+  modalHalfField: {
+    flex: 1,
+  },
+  modalFullWidthButton: {
+    marginTop: moderateScale(8),
+  },
+  modalListActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalListActionSpacing: {
+    marginLeft: moderateScale(12),
+  },
+  hitSlop: {
+    top: 8,
+    bottom: 8,
+    left: 8,
+    right: 8,
+  },
+  addonContent: {
+    paddingBottom: moderateScale(16),
   },
 });
 
+export default AddDishScreen;
