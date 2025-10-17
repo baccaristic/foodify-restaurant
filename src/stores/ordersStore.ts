@@ -4,14 +4,31 @@ import type { OrderNotificationDTO } from '../types/api';
 interface OrdersState {
   activeAlert: OrderNotificationDTO | null;
   queuedAlerts: OrderNotificationDTO[];
+  activeDriverAssignment: OrderNotificationDTO | null;
+  queuedDriverAssignments: OrderNotificationDTO[];
   pushAlert: (order: OrderNotificationDTO) => void;
   clearActiveAlert: () => void;
+  pushDriverAssignment: (order: OrderNotificationDTO) => void;
+  clearDriverAssignment: () => void;
   resetAlerts: () => void;
 }
+
+const shiftQueue = (
+  queue: OrderNotificationDTO[]
+): { next: OrderNotificationDTO | null; rest: OrderNotificationDTO[] } => {
+  if (queue.length === 0) {
+    return { next: null, rest: [] };
+  }
+
+  const [next, ...rest] = queue;
+  return { next, rest };
+};
 
 export const useOrdersStore = create<OrdersState>((set) => ({
   activeAlert: null,
   queuedAlerts: [],
+  activeDriverAssignment: null,
+  queuedDriverAssignments: [],
   pushAlert: (order) =>
     set((state) => {
       if (!state.activeAlert) {
@@ -23,11 +40,41 @@ export const useOrdersStore = create<OrdersState>((set) => ({
   clearActiveAlert: () =>
     set((state) => {
       if (state.queuedAlerts.length === 0) {
-        return { activeAlert: null, queuedAlerts: [] };
+        return { ...state, activeAlert: null };
       }
 
-      const [nextAlert, ...rest] = state.queuedAlerts;
-      return { activeAlert: nextAlert, queuedAlerts: rest };
+      const { next, rest } = shiftQueue(state.queuedAlerts);
+      return { ...state, activeAlert: next, queuedAlerts: rest };
     }),
-  resetAlerts: () => set({ activeAlert: null, queuedAlerts: [] }),
+  pushDriverAssignment: (order) =>
+    set((state) => {
+      if (!state.activeDriverAssignment) {
+        return { ...state, activeDriverAssignment: order };
+      }
+
+      return {
+        ...state,
+        queuedDriverAssignments: [...state.queuedDriverAssignments, order],
+      };
+    }),
+  clearDriverAssignment: () =>
+    set((state) => {
+      if (state.queuedDriverAssignments.length === 0) {
+        return { ...state, activeDriverAssignment: null };
+      }
+
+      const { next, rest } = shiftQueue(state.queuedDriverAssignments);
+      return {
+        ...state,
+        activeDriverAssignment: next,
+        queuedDriverAssignments: rest,
+      };
+    }),
+  resetAlerts: () =>
+    set({
+      activeAlert: null,
+      queuedAlerts: [],
+      activeDriverAssignment: null,
+      queuedDriverAssignments: [],
+    }),
 }));
