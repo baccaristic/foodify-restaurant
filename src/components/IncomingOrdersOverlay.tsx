@@ -24,12 +24,13 @@ import { restaurantApi } from '../api/restaurantApi';
 const bellImage = require('../../assets/bell.png');
 const alertSound = require('../../assets/sound/newOrder.mp3');
 
-const MAX_VISIBLE_ALERTS = 3;
-
 export const IncomingOrdersOverlay: React.FC = () => {
   const activeAlert = useOrdersStore((state) => state.activeAlert);
   const queuedAlerts = useOrdersStore((state) => state.queuedAlerts);
-  const clearActiveAlert = useOrdersStore((state) => state.clearActiveAlert);
+  const removeAlert = useOrdersStore((state) => state.removeAlert);
+  const bumpActiveOrdersRefreshToken = useOrdersStore(
+    (state) => state.bumpActiveOrdersRefreshToken
+  );
 
   const alerts = useMemo(() => {
     if (!activeAlert) {
@@ -40,6 +41,7 @@ export const IncomingOrdersOverlay: React.FC = () => {
   }, [activeAlert, queuedAlerts]);
 
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const insets = useSafeAreaInsets();
   const soundRef = useRef<Audio.Sound | null>(null);
 
@@ -104,13 +106,31 @@ export const IncomingOrdersOverlay: React.FC = () => {
     };
   }, [alerts, stopAlertSound]);
 
-  const handleClearTopAlert = useCallback(() => {
-    if (processingOrderId !== null) {
+  useEffect(() => {
+    setSelectedIndex((prev) => {
+      if (alerts.length === 0) {
+        return 0;
+      }
+
+      return Math.min(prev, alerts.length - 1);
+    });
+  }, [alerts.length]);
+
+  useEffect(() => {
+    if (alerts.length === 0) {
       return;
     }
 
-    clearActiveAlert();
-  }, [clearActiveAlert, processingOrderId]);
+    setSelectedIndex(0);
+  }, [alerts[0]?.orderId, alerts.length]);
+
+  const handleSelectPrevious = useCallback(() => {
+    setSelectedIndex((prev) => Math.max(prev - 1, 0));
+  }, []);
+
+  const handleSelectNext = useCallback(() => {
+    setSelectedIndex((prev) => Math.min(prev + 1, alerts.length - 1));
+  }, [alerts.length]);
 
   const handleAccept = useCallback(
     async (order: OrderNotificationDTO) => {
@@ -122,53 +142,63 @@ export const IncomingOrdersOverlay: React.FC = () => {
 
       try {
         await restaurantApi.acceptOrder(order.orderId);
-        clearActiveAlert();
+        removeAlert(order.orderId);
+        bumpActiveOrdersRefreshToken();
       } catch (error) {
         Alert.alert('Unable to accept order', 'Please try again in a moment.');
       } finally {
         setProcessingOrderId(null);
       }
     },
-    [clearActiveAlert, processingOrderId]
+    [bumpActiveOrdersRefreshToken, processingOrderId, removeAlert]
+  );
+
+  const handleDecline = useCallback(
+    async (order: OrderNotificationDTO) => {
+      if (processingOrderId !== null) {
+        return;
+      }
+
+      setProcessingOrderId(order.orderId);
+
+      try {
+        await restaurantApi.rejectOrder(order.orderId);
+        removeAlert(order.orderId);
+      } catch (error) {
+        Alert.alert('Unable to decline order', 'Please try again in a moment.');
+      } finally {
+        setProcessingOrderId(null);
+      }
+    },
+    [processingOrderId, removeAlert]
   );
 
   if (alerts.length === 0) {
     return null;
   }
 
+  const displayedAlert = alerts[selectedIndex];
+  const canGoPrevious = selectedIndex > 0 && processingOrderId === null;
+  const canGoNext = selectedIndex < alerts.length - 1 && processingOrderId === null;
+
   return (
     <View pointerEvents="auto" style={styles.overlayContainer}>
       <View pointerEvents="none" style={styles.backdrop} />
-      {alerts.slice(0, MAX_VISIBLE_ALERTS).map((alert, index) => {
-        const topOffset = Math.max(insets.top, moderateScale(16)) + moderateScale(16) + index * moderateScale(16);
-        const scale = 1 - index * 0.04;
-        const opacity = index === 0 ? 1 : 0.85 - index * 0.05;
-        const isTop = index === 0;
-
-        return (
-          <View
-            key={`${alert.orderId}-${index}`}
-            pointerEvents={isTop ? 'auto' : 'none'}
-            style={[
-              styles.cardWrapper,
-              isTop ? styles.topCardWrapper : { top: topOffset },
-              {
-                transform: [{ scale }],
-                opacity,
-              },
-            ]}
-          >
-            <IncomingOrderCard
-              order={alert}
-              isProcessing={processingOrderId === alert.orderId}
-              onAccept={() => handleAccept(alert)}
-              onDecline={handleClearTopAlert}
-              isTop={isTop}
-              insets={insets}
-            />
-          </View>
-        );
-      })}
+      <View style={styles.cardWrapper}>
+        <IncomingOrderCard
+          order={displayedAlert}
+          isProcessing={processingOrderId === displayedAlert.orderId}
+          onAccept={() => handleAccept(displayedAlert)}
+          onDecline={() => handleDecline(displayedAlert)}
+          insets={insets}
+          currentIndex={selectedIndex}
+          total={alerts.length}
+          onGoPrevious={handleSelectPrevious}
+          onGoNext={handleSelectNext}
+          canGoPrevious={canGoPrevious}
+          canGoNext={canGoNext}
+        />
+      </View>
     </View>
   );
 };
@@ -178,8 +208,13 @@ type IncomingOrderCardProps = {
   isProcessing: boolean;
   onAccept: () => void;
   onDecline: () => void;
-  isTop: boolean;
   insets: EdgeInsets;
+  currentIndex: number;
+  total: number;
+  onGoPrevious: () => void;
+  onGoNext: () => void;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
 };
 
 const IncomingOrderCard: React.FC<IncomingOrderCardProps> = ({
@@ -187,42 +222,53 @@ const IncomingOrderCard: React.FC<IncomingOrderCardProps> = ({
   isProcessing,
   onAccept,
   onDecline,
-  isTop,
   insets,
+  currentIndex,
+  total,
+  onGoPrevious,
+  onGoNext,
+  canGoPrevious,
+  canGoNext,
 }) => {
   const itemSummaries = useMemo(() => formatOrderItems(order), [order]);
-  const contentStyle = useMemo<StyleProp<ViewStyle>>(() => {
-    if (!isTop) {
-      return styles.cardContent;
-    }
-
-    return [
+  const contentStyle = useMemo<StyleProp<ViewStyle>>(
+    () => [
       styles.cardContent,
       {
         paddingTop: moderateScale(24) + insets.top,
         paddingBottom: moderateScale(24) + Math.max(insets.bottom, moderateScale(24)),
       },
-    ];
-  }, [insets.bottom, insets.top, isTop]);
-  const actionsRowStyle = useMemo<StyleProp<ViewStyle>>(
-    () => (isTop ? [styles.actionsRow, styles.fullScreenActionsRow] : styles.actionsRow),
-    [isTop]
+    ],
+    [insets.bottom, insets.top]
   );
 
   return (
-    <View
-      style={[
-        styles.card,
-        isTop ? styles.fullScreenCard : styles.stackedCard,
-        !isTop && styles.mutedCard,
-      ]}
-    >
+    <View style={[styles.card, styles.fullScreenCard]}>
       <ScrollView
         style={styles.cardScroll}
         contentContainerStyle={contentStyle}
         bounces={false}
         showsVerticalScrollIndicator={false}
       >
+        {total > 1 && (
+          <View style={styles.navigationRow}>
+            <TouchableOpacity
+              onPress={onGoPrevious}
+              style={[styles.navigationButton, !canGoPrevious && styles.disabledNavButton]}
+              disabled={!canGoPrevious}
+            >
+              <Text style={styles.navigationLabel}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.navigationCounter}>{`${currentIndex + 1} of ${total}`}</Text>
+            <TouchableOpacity
+              onPress={onGoNext}
+              style={[styles.navigationButton, !canGoNext && styles.disabledNavButton]}
+              disabled={!canGoNext}
+            >
+              <Text style={styles.navigationLabel}>›</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <Text style={styles.restaurantName}>{order.restaurant.name}</Text>
 
         <View style={styles.content}>
@@ -238,16 +284,16 @@ const IncomingOrderCard: React.FC<IncomingOrderCardProps> = ({
           </View>
         </View>
 
-        <View style={actionsRowStyle}>
+        <View style={[styles.actionsRow, styles.fullScreenActionsRow]}>
           <TouchableOpacity style={[styles.actionButton, styles.declineButton]} onPress={onDecline}>
             <Text style={[styles.actionLabel, styles.declineLabel]}>
               Decline <Text style={styles.symbol}>✕</Text>
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionButton, styles.acceptButton, (isProcessing || !isTop) && styles.disabledButton]}
+            style={[styles.actionButton, styles.acceptButton, isProcessing && styles.disabledButton]}
             onPress={onAccept}
-            disabled={isProcessing || !isTop}
+            disabled={isProcessing}
           >
             {isProcessing ? (
               <ActivityIndicator color={colors.white} />
@@ -280,12 +326,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    paddingHorizontal: moderateScale(24),
-  },
-  topCardWrapper: {
     top: 0,
     bottom: 0,
-    paddingHorizontal: 0,
   },
   card: {
     backgroundColor: colors.white,
@@ -299,13 +341,6 @@ const styles = StyleSheet.create({
   fullScreenCard: {
     flex: 1,
     borderRadius: 0,
-  },
-  stackedCard: {
-    borderRadius: moderateScale(20),
-    maxHeight: '80%',
-  },
-  mutedCard: {
-    opacity: 0.9,
   },
   cardContent: {
     flexGrow: 1,
@@ -323,6 +358,35 @@ const styles = StyleSheet.create({
     ...typography.h3,
     textTransform: 'uppercase',
     textAlign: 'center',
+  },
+  navigationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    alignSelf: 'stretch',
+    marginBottom: moderateScale(16),
+  },
+  navigationButton: {
+    width: moderateScale(48),
+    height: moderateScale(48),
+    borderRadius: moderateScale(24),
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  disabledNavButton: {
+    opacity: 0.4,
+  },
+  navigationLabel: {
+    ...typography.h2,
+    color: colors.primary,
+  },
+  navigationCounter: {
+    ...typography.bodyStrong,
+    textTransform: 'uppercase',
+    color: colors.textPrimary,
   },
   content: {
     alignItems: 'center',

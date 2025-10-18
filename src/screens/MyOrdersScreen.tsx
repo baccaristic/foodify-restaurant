@@ -26,6 +26,7 @@ import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderItemDTO, OrderNotificationDTO, PaginatedResponse } from '../types/api';
 import type { RootStackParamList } from '../navigation/types';
+import { useOrdersStore } from '../stores';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -267,6 +268,7 @@ export const MyOrdersScreen: React.FC = () => {
   const [activePicker, setActivePicker] = useState<'from' | 'to' | null>(null);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [pendingAction, setPendingAction] = useState<PendingActionState>(null);
+  const bumpActiveOrdersRefreshToken = useOrdersStore((state) => state.bumpActiveOrdersRefreshToken);
 
   const loadOrders = useCallback(
     async (pageToLoad: number, append: boolean) => {
@@ -340,13 +342,14 @@ export const MyOrdersScreen: React.FC = () => {
       try {
         const updated = await restaurantApi.acceptOrder(order.orderId);
         updateOrderInList(updated);
+        bumpActiveOrdersRefreshToken();
       } catch (error) {
         Alert.alert('Unable to accept order', 'Please try again in a moment.');
       } finally {
         setPendingAction(null);
       }
     },
-    [pendingAction, updateOrderInList]
+    [bumpActiveOrdersRefreshToken, pendingAction, updateOrderInList]
   );
 
   const handleDeclinePending = useCallback(
