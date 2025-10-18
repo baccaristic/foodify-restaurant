@@ -83,14 +83,41 @@ const to12Hour = (hour24: number): { hour: number; period: 'AM' | 'PM' } => {
 
 const formatNumber = (value: number): string => `${value}`.padStart(2, '0');
 
-const formatLocalTime = (time: LocalTimeDTO): string => {
-  const { hour, period } = to12Hour(time.hour);
-  const minute = formatNumber(time.minute);
+const sanitizeLocalTime = (
+  time: LocalTimeDTO | null | undefined,
+  fallback: LocalTimeDTO
+): LocalTimeDTO => {
+  const hour = typeof time?.hour === 'number' && Number.isFinite(time.hour) ? time.hour : fallback.hour;
+  const minute =
+    typeof time?.minute === 'number' && Number.isFinite(time.minute) ? time.minute : fallback.minute;
+  const second =
+    typeof time?.second === 'number' && Number.isFinite(time.second) ? time.second : fallback.second;
+  const nano = typeof time?.nano === 'number' && Number.isFinite(time.nano) ? time.nano : fallback.nano;
+
+  return { hour, minute, second, nano };
+};
+
+const normalizeDaySchedule = (day: DayScheduleDTO): DayScheduleDTO => ({
+  ...day,
+  opensAt: sanitizeLocalTime(day.opensAt, DEFAULT_OPEN_TIME),
+  closesAt: sanitizeLocalTime(day.closesAt, DEFAULT_CLOSE_TIME),
+});
+
+const normalizeSpecialDay = (day: SpecialDayDTO): SpecialDayDTO => ({
+  ...day,
+  opensAt: sanitizeLocalTime(day.opensAt, DEFAULT_OPEN_TIME),
+  closesAt: sanitizeLocalTime(day.closesAt, DEFAULT_CLOSE_TIME),
+});
+
+const formatLocalTime = (time: LocalTimeDTO, fallback: LocalTimeDTO): string => {
+  const safeTime = sanitizeLocalTime(time, fallback);
+  const { hour, period } = to12Hour(safeTime.hour);
+  const minute = formatNumber(safeTime.minute);
   return `${formatNumber(hour)}:${minute} ${period}`;
 };
 
 const formatTimeRange = (opensAt: LocalTimeDTO, closesAt: LocalTimeDTO): string =>
-  `${formatLocalTime(opensAt)} - ${formatLocalTime(closesAt)}`;
+  `${formatLocalTime(opensAt, DEFAULT_OPEN_TIME)} - ${formatLocalTime(closesAt, DEFAULT_CLOSE_TIME)}`;
 
 const sortWeeklySchedule = (schedule: DayScheduleDTO[]): DayScheduleDTO[] =>
   [...schedule].sort(
@@ -105,17 +132,18 @@ const createLocalTime = (hour: number, minute: number): LocalTimeDTO => ({
 });
 
 const cloneSchedule = (schedule: DayScheduleDTO[]): DayScheduleDTO[] =>
-  schedule.map((day) => ({
+  schedule.map((day) => normalizeDaySchedule({
     ...day,
     opensAt: { ...day.opensAt },
     closesAt: { ...day.closesAt },
   }));
 
-const cloneSpecialDay = (day: SpecialDayDTO): SpecialDayDTO => ({
-  ...day,
-  opensAt: { ...day.opensAt },
-  closesAt: { ...day.closesAt },
-});
+const cloneSpecialDay = (day: SpecialDayDTO): SpecialDayDTO =>
+  normalizeSpecialDay({
+    ...day,
+    opensAt: { ...day.opensAt },
+    closesAt: { ...day.closesAt },
+  });
 
 const sortSpecialDays = (days: SpecialDayDTO[]): SpecialDayDTO[] =>
   [...days].sort((a, b) => a.date.localeCompare(b.date));
@@ -199,8 +227,11 @@ export const OperatingHoursScreen: React.FC = () => {
   }, []);
 
   const applyOperatingHoursResponse = useCallback((data: OperatingHoursResponseDTO) => {
-    setWeeklySchedule(sortWeeklySchedule(data.weeklySchedule));
-    setSpecialDays(sortSpecialDays(data.specialDays.map(cloneSpecialDay)));
+    const sanitizedWeekly = cloneSchedule(data.weeklySchedule);
+    const sanitizedSpecialDays = data.specialDays.map(cloneSpecialDay);
+
+    setWeeklySchedule(sortWeeklySchedule(sanitizedWeekly));
+    setSpecialDays(sortSpecialDays(sanitizedSpecialDays));
   }, []);
 
   useEffect(() => {
@@ -567,53 +598,59 @@ const WeeklyScheduleModal: React.FC<WeeklyScheduleModalProps> = ({
                 </TouchableOpacity>
               </View>
 
-              {sortWeeklySchedule(schedule).map((day) => {
-                const labels = DAY_LABELS[day.day];
-                return (
-                  <View key={day.day} style={styles.weeklyRow}>
-                    <View style={styles.weeklyDayColumn}>
-                      <View style={styles.weeklyIconWrapper}>
-                        <CalendarDays color={colors.primary} size={moderateScale(18)} strokeWidth={2.2} />
-                      </View>
-                      <Text style={styles.weeklyDayLabel}>{labels.short}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={[styles.setHoursButton, !day.open && styles.setHoursButtonDisabled]}
-                      onPress={() => onEditHours(day.day)}
-                      activeOpacity={0.85}
-                      disabled={!day.open}
-                    >
-                      <Text style={styles.setHoursLabel}>
-                        {day.open ? formatTimeRange(day.opensAt, day.closesAt) : 'Set hours'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.weeklyToggleWrapper}>
-                      <Text style={styles.weeklyStatusLabel}>{day.open ? 'Open' : 'Closed'}</Text>
-                      <Switch
-                        value={day.open}
-                        onValueChange={(value) => onToggleDay(day.day, value)}
-                        trackColor={{ false: '#E0E0E0', true: colors.primary }}
-                        thumbColor={day.open ? colors.white : '#f4f3f4'}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
-
-              <TouchableOpacity
-                style={[styles.primaryButton, styles.modalSaveButton]}
-                onPress={onSave}
-                activeOpacity={0.85}
-                disabled={saving}
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                showsVerticalScrollIndicator={false}
               >
-                {saving ? (
-                  <ActivityIndicator color={colors.white} size="small" />
-                ) : (
-                  <Text style={styles.primaryButtonLabel}>Save</Text>
-                )}
-              </TouchableOpacity>
+                {sortWeeklySchedule(schedule).map((day) => {
+                  const labels = DAY_LABELS[day.day];
+                  return (
+                    <View key={day.day} style={styles.weeklyRow}>
+                      <View style={styles.weeklyDayColumn}>
+                        <View style={styles.weeklyIconWrapper}>
+                          <CalendarDays color={colors.primary} size={moderateScale(18)} strokeWidth={2.2} />
+                        </View>
+                        <Text style={styles.weeklyDayLabel}>{labels.short}</Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.setHoursButton, !day.open && styles.setHoursButtonDisabled]}
+                        onPress={() => onEditHours(day.day)}
+                        activeOpacity={0.85}
+                        disabled={!day.open}
+                      >
+                        <Text style={styles.setHoursLabel}>
+                          {day.open ? formatTimeRange(day.opensAt, day.closesAt) : 'Set hours'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.weeklyToggleWrapper}>
+                        <Text style={styles.weeklyStatusLabel}>{day.open ? 'Open' : 'Closed'}</Text>
+                        <Switch
+                          value={day.open}
+                          onValueChange={(value) => onToggleDay(day.day, value)}
+                          trackColor={{ false: '#E0E0E0', true: colors.primary }}
+                          thumbColor={day.open ? colors.white : '#f4f3f4'}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={[styles.primaryButton, styles.modalSaveButton]}
+                  onPress={onSave}
+                  activeOpacity={0.85}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color={colors.white} size="small" />
+                  ) : (
+                    <Text style={styles.primaryButtonLabel}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -624,9 +661,10 @@ const WeeklyScheduleModal: React.FC<WeeklyScheduleModalProps> = ({
 
 type TimeValue = { hour: number; minute: number; period: 'AM' | 'PM' };
 
-const toTimeValue = (time: LocalTimeDTO): TimeValue => {
-  const { hour, period } = to12Hour(time.hour);
-  return { hour, minute: time.minute, period };
+const toTimeValue = (time: LocalTimeDTO, fallback: LocalTimeDTO): TimeValue => {
+  const safeTime = sanitizeLocalTime(time, fallback);
+  const { hour, period } = to12Hour(safeTime.hour);
+  return { hour, minute: safeTime.minute, period };
 };
 
 const fromTimeValue = (value: TimeValue): LocalTimeDTO =>
@@ -649,12 +687,14 @@ const DailyHoursModal: React.FC<DailyHoursModalProps> = ({
   onCancel,
   onConfirm,
 }) => {
-  const [opensAtValue, setOpensAtValue] = useState<TimeValue>(toTimeValue(initialOpensAt));
-  const [closesAtValue, setClosesAtValue] = useState<TimeValue>(toTimeValue(initialClosesAt));
+  const [opensAtValue, setOpensAtValue] = useState<TimeValue>(toTimeValue(initialOpensAt, DEFAULT_OPEN_TIME));
+  const [closesAtValue, setClosesAtValue] = useState<TimeValue>(
+    toTimeValue(initialClosesAt, DEFAULT_CLOSE_TIME)
+  );
 
   useEffect(() => {
-    setOpensAtValue(toTimeValue(initialOpensAt));
-    setClosesAtValue(toTimeValue(initialClosesAt));
+    setOpensAtValue(toTimeValue(initialOpensAt, DEFAULT_OPEN_TIME));
+    setClosesAtValue(toTimeValue(initialClosesAt, DEFAULT_CLOSE_TIME));
   }, [initialClosesAt, initialOpensAt]);
 
   const handleConfirm = () => {
@@ -1081,6 +1121,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: moderateScale(420),
+    maxHeight: '90%',
     backgroundColor: colors.white,
     borderRadius: moderateScale(28),
     padding: moderateScale(24),
@@ -1090,6 +1131,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: moderateScale(16),
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: moderateScale(8),
   },
   modalTitle: {
     ...typography.bodyStrong,
