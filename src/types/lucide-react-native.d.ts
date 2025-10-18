@@ -15,6 +15,7 @@ declare module 'lucide-react-native' {
   export const BarChart3: LucideIcon;
   export const Settings: LucideIcon;
   export const ArrowLeft: LucideIcon;
+  export const ArrowRight: LucideIcon;
   export const CandyOff: LucideIcon;
   export const MessageCircleMore: LucideIcon;
   export const QrCode: LucideIcon;
@@ -23,4 +24,11 @@ declare module 'lucide-react-native' {
   export const Pencil: LucideIcon;
   export const X: LucideIcon;
   export const CalendarDays: LucideIcon;
+  export const CalendarClock: LucideIcon;
+  export const LogOut: LucideIcon;
+  export const ScrollText: LucideIcon;
+  export const Clock3: LucideIcon;
+  export const Edit3: LucideIcon;
+  export const ChevronUp: LucideIcon;
+  export const ChevronDown: LucideIcon;
 }

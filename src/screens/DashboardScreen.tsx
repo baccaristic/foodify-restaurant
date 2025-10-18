@@ -21,6 +21,7 @@ import { StatisticCard } from '../components/StatisticCard';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { FooterNavigation } from '../components/FooterNavigation';
+import { SettingsSidebar } from '../components/SettingsSidebar';
 import { Image } from 'expo-image';
 import { useAuthStore } from '../stores';
 import { restaurantApi } from '../api/restaurantApi';
@@ -36,6 +37,7 @@ export const DashboardScreen: React.FC = () => {
   const [activeOrders, setActiveOrders] = useState<OrderNotificationDTO[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [isSettingsVisible, setSettingsVisible] = useState(false);
   const logout = useAuthStore((state) => state.logout);
   const isMountedRef = useRef(true);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -97,6 +99,18 @@ export const DashboardScreen: React.FC = () => {
   const handleNavigateOrders = useCallback(() => {
     navigation.navigate('MyOrders');
   }, [navigation]);
+
+  const handleNavigateOperatingHours = useCallback(() => {
+    navigation.navigate('OperatingHours');
+  }, [navigation]);
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsVisible(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsVisible(false);
+  }, []);
 
   const renderOrderCard = useCallback(
     ({ item }: { item: OrderNotificationDTO }) => {
@@ -203,7 +217,17 @@ export const DashboardScreen: React.FC = () => {
                 </View>
               </View>
             </ScrollView>
-            <FooterNavigation activeKey="home" ordersBadgeCount={activeOrders.length} />
+            <FooterNavigation
+              activeKey="home"
+              ordersBadgeCount={activeOrders.length}
+              onPressSettings={handleOpenSettings}
+            />
+            <SettingsSidebar
+              visible={isSettingsVisible}
+              onClose={handleCloseSettings}
+              onNavigateOperatingHours={handleNavigateOperatingHours}
+              onLogout={handleLogout}
+            />
           </View>
         </SafeAreaView>
       </View>

@@ -19,6 +19,8 @@ declare module 'react-native-calendars' {
     color?: string;
     textColor?: string;
     disabled?: boolean;
+    selectedColor?: string;
+    selectedTextColor?: string;
   }
 
   export type MarkedDates = Record<string, MarkingProps>;
@@ -28,6 +30,8 @@ declare module 'react-native-calendars' {
     todayTextColor?: string;
     selectedDayBackgroundColor?: string;
     selectedDayTextColor?: string;
+    calendarBackground?: string;
+    textSectionTitleColor?: string;
     textDayFontFamily?: string;
     textMonthFontFamily?: string;
     textDayHeaderFontFamily?: string;

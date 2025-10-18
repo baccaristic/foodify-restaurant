@@ -9,4 +9,5 @@ export type RootStackParamList = {
   Menu: undefined;
   AddDish: { menuItem?: MenuItemDTO; origin?: 'menu' | 'view' } | undefined;
   ViewMenuItem: { item: MenuItemDTO };
+  OperatingHours: undefined;
 };

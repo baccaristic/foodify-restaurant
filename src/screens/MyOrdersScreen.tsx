@@ -20,11 +20,13 @@ import { Calendar } from 'react-native-calendars';
 import type { DateObject, MarkedDates } from 'react-native-calendars';
 import { CalendarDays, X } from 'lucide-react-native';
 import { FooterNavigation } from '../components/FooterNavigation';
+import { SettingsSidebar } from '../components/SettingsSidebar';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderItemDTO, OrderNotificationDTO, PaginatedResponse } from '../types/api';
 import type { RootStackParamList } from '../navigation/types';
+import { useAuthStore } from '../stores';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -214,7 +216,9 @@ export const MyOrdersScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filters, setFilters] = useState<FiltersState>(initialFilters);
   const [activePicker, setActivePicker] = useState<'from' | 'to' | null>(null);
+  const [isSettingsVisible, setSettingsVisible] = useState(false);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const logout = useAuthStore((state) => state.logout);
 
   const loadOrders = useCallback(
     async (pageToLoad: number, append: boolean) => {
@@ -400,6 +404,22 @@ export const MyOrdersScreen: React.FC = () => {
     );
   }, [state.items]);
 
+  const handleNavigateOperatingHours = useCallback(() => {
+    navigation.navigate('OperatingHours');
+  }, [navigation]);
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsVisible(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsVisible(false);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    void logout();
+  }, [logout]);
+
   return (
     <ImageBackground source={backgroundImage} style={styles.background} resizeMode="cover">
       <SafeAreaView style={styles.safeArea}>
@@ -492,7 +512,13 @@ export const MyOrdersScreen: React.FC = () => {
           />
         </View>
 
-        <FooterNavigation activeKey="orders" />
+        <FooterNavigation activeKey="orders" onPressSettings={handleOpenSettings} />
+        <SettingsSidebar
+          visible={isSettingsVisible}
+          onClose={handleCloseSettings}
+          onNavigateOperatingHours={handleNavigateOperatingHours}
+          onLogout={handleLogout}
+        />
       </SafeAreaView>
 
       <Modal

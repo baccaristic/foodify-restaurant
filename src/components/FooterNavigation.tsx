@@ -29,23 +29,30 @@ const navItems: NavItem[] = [
 type FooterNavigationProps = {
   activeKey?: FooterNavKey;
   ordersBadgeCount?: number;
+  onPressSettings?: () => void;
 };
 
 export const FooterNavigation: React.FC<FooterNavigationProps> = ({
   activeKey = 'home',
   ordersBadgeCount = 0,
+  onPressSettings,
 }) => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   const handleNavigate = useCallback(
     (item: NavItem) => {
+      if (item.key === 'settings') {
+        onPressSettings?.();
+        return;
+      }
+
       if (!item.route || item.key === activeKey) {
         return;
       }
 
       navigation.navigate(item.route);
     },
-    [activeKey, navigation]
+    [activeKey, navigation, onPressSettings]
   );
 
   return (
@@ -53,7 +60,8 @@ export const FooterNavigation: React.FC<FooterNavigationProps> = ({
       {navItems.map((item) => {
         const IconComponent = item.icon;
         const isActive = item.key === activeKey;
-        const isDisabled = !item.route;
+        const isSettings = item.key === 'settings';
+        const isDisabled = isSettings ? false : !item.route || isActive;
         const badgeCount = item.key === 'orders' ? ordersBadgeCount : 0;
 
         return (
@@ -62,7 +70,7 @@ export const FooterNavigation: React.FC<FooterNavigationProps> = ({
             style={styles.item}
             activeOpacity={0.85}
             onPress={() => handleNavigate(item)}
-            disabled={isDisabled || isActive}
+            disabled={isDisabled}
           >
             <View style={styles.iconWrapper}>
               <IconComponent
