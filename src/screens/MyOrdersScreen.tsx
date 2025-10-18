@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   FlatList,
   ImageBackground,
@@ -42,7 +43,7 @@ const initialState: FetchState = {
   totalItems: 0,
 };
 
-type StatusCategory = 'preparing' | 'ready' | 'pickedUp' | 'other';
+type StatusCategory = 'pending' | 'preparing' | 'ready' | 'pickedUp' | 'other';
 
 type StatusMeta = {
   label: string;
@@ -51,6 +52,11 @@ type StatusMeta = {
 };
 
 const STATUS_META: Record<StatusCategory, StatusMeta> = {
+  pending: {
+    label: 'Pending',
+    badgeBackground: '#FFF3D6',
+    badgeText: colors.textPrimary,
+  },
   preparing: {
     label: 'Preparing',
     badgeBackground: colors.primary,
@@ -80,8 +86,9 @@ const getItemsCount = (items: OrderItemDTO[]): number =>
 
 const getStatusCategory = (status: OrderNotificationDTO['status']): StatusCategory => {
   switch (status) {
-    case 'PREPARING':
     case 'PENDING':
+      return 'pending';
+    case 'PREPARING':
     case 'ACCEPTED':
       return 'preparing';
     case 'READY_FOR_PICK_UP':
@@ -170,16 +177,31 @@ const initialFilters: FiltersState = {
   to: null,
 };
 
+type PendingActionState = { id: number; type: 'accept' | 'decline' } | null;
+
 type OrderListItemProps = {
   order: OrderNotificationDTO;
   onPress: (order: OrderNotificationDTO) => void;
+  onAcceptPending: (order: OrderNotificationDTO) => void;
+  onDeclinePending: (order: OrderNotificationDTO) => void;
+  pendingAction: PendingActionState;
 };
 
-const OrderListItem: React.FC<OrderListItemProps> = ({ order, onPress }) => {
+const OrderListItem: React.FC<OrderListItemProps> = ({
+  order,
+  onPress,
+  onAcceptPending,
+  onDeclinePending,
+  pendingAction,
+}) => {
   const category = getStatusCategory(order.status);
   const meta = STATUS_META[category];
   const itemsCount = getItemsCount(order.items);
   const relativeTime = getRelativeTime(order.date);
+  const isPending = order.status === 'PENDING';
+  const isActionInProgress = pendingAction?.id === order.orderId;
+  const isAccepting = isActionInProgress && pendingAction?.type === 'accept';
+  const isDeclining = isActionInProgress && pendingAction?.type === 'decline';
 
   return (
     <View style={styles.orderCard}>
@@ -196,6 +218,35 @@ const OrderListItem: React.FC<OrderListItemProps> = ({ order, onPress }) => {
       </View>
 
       <Text style={styles.orderItems}>{`${itemsCount} item${itemsCount === 1 ? '' : 's'}`}</Text>
+
+      {isPending && (
+        <View style={styles.pendingActionsRow}>
+          <TouchableOpacity
+            onPress={() => onDeclinePending(order)}
+            activeOpacity={0.85}
+            style={[styles.pendingActionButton, styles.pendingDeclineButton, isActionInProgress && styles.pendingActionDisabled]}
+            disabled={isActionInProgress}
+          >
+            {isDeclining ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={[styles.pendingActionLabel, styles.pendingDeclineLabel]}>Decline</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onAcceptPending(order)}
+            activeOpacity={0.85}
+            style={[styles.pendingActionButton, styles.pendingAcceptButton, isActionInProgress && styles.pendingActionDisabled]}
+            disabled={isActionInProgress}
+          >
+            {isAccepting ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Text style={styles.pendingActionLabel}>Accept</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity
         onPress={() => onPress(order)}
@@ -215,6 +266,7 @@ export const MyOrdersScreen: React.FC = () => {
   const [filters, setFilters] = useState<FiltersState>(initialFilters);
   const [activePicker, setActivePicker] = useState<'from' | 'to' | null>(null);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const [pendingAction, setPendingAction] = useState<PendingActionState>(null);
 
   const loadOrders = useCallback(
     async (pageToLoad: number, append: boolean) => {
@@ -268,6 +320,53 @@ export const MyOrdersScreen: React.FC = () => {
       navigation.navigate('OrderDetails', { order });
     },
     [navigation]
+  );
+
+  const updateOrderInList = useCallback((updated: OrderNotificationDTO) => {
+    setState((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.orderId === updated.orderId ? updated : item)),
+    }));
+  }, []);
+
+  const handleAcceptPending = useCallback(
+    async (order: OrderNotificationDTO) => {
+      if (pendingAction) {
+        return;
+      }
+
+      setPendingAction({ id: order.orderId, type: 'accept' });
+
+      try {
+        const updated = await restaurantApi.acceptOrder(order.orderId);
+        updateOrderInList(updated);
+      } catch (error) {
+        Alert.alert('Unable to accept order', 'Please try again in a moment.');
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [pendingAction, updateOrderInList]
+  );
+
+  const handleDeclinePending = useCallback(
+    async (order: OrderNotificationDTO) => {
+      if (pendingAction) {
+        return;
+      }
+
+      setPendingAction({ id: order.orderId, type: 'decline' });
+
+      try {
+        const updated = await restaurantApi.rejectOrder(order.orderId);
+        updateOrderInList(updated);
+      } catch (error) {
+        Alert.alert('Unable to decline order', 'Please try again in a moment.');
+      } finally {
+        setPendingAction(null);
+      }
+    },
+    [pendingAction, updateOrderInList]
   );
 
   const todayLabel = useMemo(() => `Today: ${formatFullDate(new Date())}`, []);
@@ -387,7 +486,7 @@ export const MyOrdersScreen: React.FC = () => {
     return state.items.reduce(
       (acc, order) => {
         const category = getStatusCategory(order.status);
-        if (category === 'preparing') {
+        if (category === 'preparing' || category === 'pending') {
           acc.preparing += 1;
         } else if (category === 'ready') {
           acc.ready += 1;
@@ -459,7 +558,15 @@ export const MyOrdersScreen: React.FC = () => {
           <FlatList
             data={state.items}
             keyExtractor={(item) => item.orderId.toString()}
-            renderItem={({ item }) => <OrderListItem order={item} onPress={handlePressOrder} />}
+          renderItem={({ item }) => (
+            <OrderListItem
+              order={item}
+              onPress={handlePressOrder}
+              onAcceptPending={handleAcceptPending}
+              onDeclinePending={handleDeclinePending}
+              pendingAction={pendingAction}
+            />
+          )}
             contentContainerStyle={[styles.listContent, state.items.length === 0 && styles.emptyList]}
             ItemSeparatorComponent={() => <View style={styles.listSeparator} />}
             showsVerticalScrollIndicator={false}
@@ -703,6 +810,36 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     marginBottom: moderateScale(12),
+  },
+  pendingActionsRow: {
+    flexDirection: 'row',
+    gap: moderateScale(12),
+    marginBottom: moderateScale(12),
+  },
+  pendingActionButton: {
+    flex: 1,
+    height: moderateScale(42),
+    borderRadius: moderateScale(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingDeclineButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+  },
+  pendingAcceptButton: {
+    backgroundColor: colors.success,
+  },
+  pendingActionLabel: {
+    ...typography.button,
+    textTransform: 'uppercase',
+  },
+  pendingDeclineLabel: {
+    color: colors.primary,
+  },
+  pendingActionDisabled: {
+    opacity: 0.65,
   },
   detailsButton: {
     backgroundColor: colors.primary,

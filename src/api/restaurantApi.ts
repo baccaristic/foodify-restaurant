@@ -75,6 +75,13 @@ export const restaurantApi = {
     return response.data;
   },
 
+  async rejectOrder(orderId: number): Promise<OrderNotificationDTO> {
+    const response = await httpClient.post<OrderNotificationDTO>(
+      `/restaurant/reject-order/${orderId}`
+    );
+    return response.data;
+  },
+
   async markOrderReady(orderId: number): Promise<OrderNotificationDTO> {
     const response = await httpClient.post<OrderNotificationDTO>(
       `/restaurant/order/ready/${orderId}`
