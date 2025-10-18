@@ -1,10 +1,15 @@
 import httpClient from './httpClient';
 import type {
   CategoryDTO,
+  DayScheduleDTO,
   MenuItemDTO,
   MenuItemRequestDTO,
+  OperatingHoursResponseDTO,
   OrderNotificationDTO,
   PaginatedResponse,
+  SpecialDayDTO,
+  SpecialDayRequestDTO,
+  UpdateWeeklyScheduleRequestDTO,
   UploadableAsset,
 } from '../types/api';
 
@@ -159,5 +164,41 @@ export const restaurantApi = {
   async createCategory(name: string): Promise<CategoryDTO> {
     const response = await httpClient.post<CategoryDTO>('/restaurant/categories', { name });
     return response.data;
+  },
+
+  async getOperatingHours(): Promise<OperatingHoursResponseDTO> {
+    const response = await httpClient.get<OperatingHoursResponseDTO>(
+      '/restaurant/operating-hours'
+    );
+    return response.data;
+  },
+
+  async updateWeeklySchedule(days: DayScheduleDTO[]): Promise<OperatingHoursResponseDTO> {
+    const payload: UpdateWeeklyScheduleRequestDTO = { days };
+    const response = await httpClient.put<OperatingHoursResponseDTO>(
+      '/restaurant/operating-hours/weekly',
+      payload
+    );
+    return response.data;
+  },
+
+  async createSpecialDay(payload: SpecialDayRequestDTO): Promise<SpecialDayDTO> {
+    const response = await httpClient.post<SpecialDayDTO>(
+      '/restaurant/operating-hours/special-days',
+      payload
+    );
+    return response.data;
+  },
+
+  async updateSpecialDay(id: number, payload: SpecialDayRequestDTO): Promise<SpecialDayDTO> {
+    const response = await httpClient.put<SpecialDayDTO>(
+      `/restaurant/operating-hours/special-days/${id}`,
+      payload
+    );
+    return response.data;
+  },
+
+  async deleteSpecialDay(id: number): Promise<void> {
+    await httpClient.delete(`/restaurant/operating-hours/special-days/${id}`);
   },
 };

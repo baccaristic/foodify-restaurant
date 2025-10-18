@@ -20,9 +20,11 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import type { RootStackParamList } from '../navigation';
 import { FooterNavigation } from '../components/FooterNavigation';
+import { SettingsSidebar } from '../components/SettingsSidebar';
 import { PickupQrModal } from '../components/PickupQrModal';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderNotificationDTO, OrderItemDTO } from '../types/api';
+import { useAuthStore } from '../stores';
 
 const backgroundImage = require('../../assets/background.png');
 
@@ -40,9 +42,11 @@ type OrderDetailsRouteProp = RouteProp<RootStackParamList, 'OrderDetails'>;
 export const OrderDetailsScreen: React.FC = () => {
   const route = useRoute<OrderDetailsRouteProp>();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const logout = useAuthStore((state) => state.logout);
   const [order, setOrder] = useState<OrderNotificationDTO>(route.params.order);
   const [isMarkingReady, setIsMarkingReady] = useState(false);
   const [isPickupQrVisible, setPickupQrVisible] = useState(false);
+  const [isSettingsVisible, setSettingsVisible] = useState(false);
 
   const isPreparing = order.status === 'PREPARING';
   const isReadyForPickup = order.status === 'READY_FOR_PICK_UP';
@@ -104,6 +108,22 @@ export const OrderDetailsScreen: React.FC = () => {
   const handleClosePickupQr = useCallback(() => {
     setPickupQrVisible(false);
   }, []);
+
+  const handleNavigateOperatingHours = useCallback(() => {
+    navigation.navigate('OperatingHours');
+  }, [navigation]);
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsVisible(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsVisible(false);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    void logout();
+  }, [logout]);
 
   return (
     <ImageBackground source={backgroundImage} style={styles.background} resizeMode="cover">
@@ -248,7 +268,10 @@ export const OrderDetailsScreen: React.FC = () => {
               })()}
 
               <View style={styles.footerNavigationWrapper}>
-                <FooterNavigation activeKey="orders" />
+                <FooterNavigation
+                  activeKey="orders"
+                  onPressSettings={handleOpenSettings}
+                />
               </View>
             </View>
           </View>
@@ -258,6 +281,12 @@ export const OrderDetailsScreen: React.FC = () => {
         visible={isPickupQrVisible}
         pickupToken={order.pickupToken ?? ''}
         onDismiss={handleClosePickupQr}
+      />
+      <SettingsSidebar
+        visible={isSettingsVisible}
+        onClose={handleCloseSettings}
+        onNavigateOperatingHours={handleNavigateOperatingHours}
+        onLogout={handleLogout}
       />
     </ImageBackground>
   );
