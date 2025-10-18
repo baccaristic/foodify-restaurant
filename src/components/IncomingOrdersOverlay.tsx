@@ -138,11 +138,11 @@ export const IncomingOrdersOverlay: React.FC = () => {
         return;
       }
 
-      setProcessingOrderId(order.orderId);
+      setProcessingOrderId(order?.orderId);
 
       try {
-        await restaurantApi.acceptOrder(order.orderId);
-        removeAlert(order.orderId);
+        await restaurantApi.acceptOrder(order?.orderId);
+        removeAlert(order?.orderId);
         bumpActiveOrdersRefreshToken();
       } catch (error) {
         Alert.alert('Unable to accept order', 'Please try again in a moment.');
@@ -159,11 +159,11 @@ export const IncomingOrdersOverlay: React.FC = () => {
         return;
       }
 
-      setProcessingOrderId(order.orderId);
+      setProcessingOrderId(order?.orderId);
 
       try {
-        await restaurantApi.rejectOrder(order.orderId);
-        removeAlert(order.orderId);
+        await restaurantApi.rejectOrder(order?.orderId);
+        removeAlert(order?.orderId);
       } catch (error) {
         Alert.alert('Unable to decline order', 'Please try again in a moment.');
       } finally {
@@ -187,7 +187,7 @@ export const IncomingOrdersOverlay: React.FC = () => {
       <View style={styles.cardWrapper}>
         <IncomingOrderCard
           order={displayedAlert}
-          isProcessing={processingOrderId === displayedAlert.orderId}
+          isProcessing={processingOrderId === displayedAlert?.orderId}
           onAccept={() => handleAccept(displayedAlert)}
           onDecline={() => handleDecline(displayedAlert)}
           insets={insets}
