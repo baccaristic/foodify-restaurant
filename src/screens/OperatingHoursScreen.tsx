@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -266,14 +266,14 @@ export const OperatingHoursScreen: React.FC = () => {
           return { ...item, open };
         }
 
-        const nextOpensAt = item.opensAt ?? DEFAULT_OPEN_TIME;
-        const nextClosesAt = item.closesAt ?? DEFAULT_CLOSE_TIME;
+        const nextOpensAt = sanitizeLocalTime(item.opensAt, DEFAULT_OPEN_TIME);
+        const nextClosesAt = sanitizeLocalTime(item.closesAt, DEFAULT_CLOSE_TIME);
 
         return {
           ...item,
           open,
-          opensAt: { ...nextOpensAt },
-          closesAt: { ...nextClosesAt },
+          opensAt: nextOpensAt,
+          closesAt: nextClosesAt,
         };
       })
     );
@@ -288,8 +288,8 @@ export const OperatingHoursScreen: React.FC = () => {
 
       setTimePickerTarget({ type: 'weekly', day });
       setTimePickerRange({
-        opensAt: { ...scheduleDay.opensAt },
-        closesAt: { ...scheduleDay.closesAt },
+        opensAt: sanitizeLocalTime(scheduleDay.opensAt, DEFAULT_OPEN_TIME),
+        closesAt: sanitizeLocalTime(scheduleDay.closesAt, DEFAULT_CLOSE_TIME),
       });
     },
     [weeklyDraft]
@@ -302,14 +302,17 @@ export const OperatingHoursScreen: React.FC = () => {
         return;
       }
 
+      const safeOpensAt = sanitizeLocalTime(opensAt, DEFAULT_OPEN_TIME);
+      const safeClosesAt = sanitizeLocalTime(closesAt, DEFAULT_CLOSE_TIME);
+
       if (target.type === 'weekly') {
         setWeeklyDraft((prev) =>
           prev.map((item) =>
             item.day === target.day
               ? {
                   ...item,
-                  opensAt: { ...opensAt },
-                  closesAt: { ...closesAt },
+                  opensAt: { ...safeOpensAt },
+                  closesAt: { ...safeClosesAt },
                 }
               : item
           )
@@ -319,8 +322,8 @@ export const OperatingHoursScreen: React.FC = () => {
           visible: true,
           day: {
             ...specialDayModal.day,
-            opensAt: { ...opensAt },
-            closesAt: { ...closesAt },
+            opensAt: { ...safeOpensAt },
+            closesAt: { ...safeClosesAt },
           },
         });
       }
@@ -334,11 +337,15 @@ export const OperatingHoursScreen: React.FC = () => {
   const handleSaveWeekly = useCallback(async () => {
     setIsSavingWeekly(true);
     try {
-      const payload = weeklyDraft.map((day) => ({
-        ...day,
-        opensAt: sanitizeLocalTime(day.opensAt, DEFAULT_OPEN_TIME),
-        closesAt: sanitizeLocalTime(day.closesAt, DEFAULT_CLOSE_TIME),
-      }));
+      const payload = weeklyDraft.map((day) => {
+        const sanitized = normalizeDaySchedule(day);
+        return {
+          day: sanitized.day,
+          open: sanitized.open,
+          opensAt: { ...sanitized.opensAt },
+          closesAt: { ...sanitized.closesAt },
+        };
+      });
       const response = await restaurantApi.updateWeeklySchedule(payload);
       applyOperatingHoursResponse(response);
       setWeeklyEditorVisible(false);
@@ -379,12 +386,13 @@ export const OperatingHoursScreen: React.FC = () => {
     async (day: SpecialDayDTO) => {
       setIsSavingSpecialDay(true);
       try {
+        const sanitized = normalizeSpecialDay(day);
         const payload: SpecialDayRequestDTO = {
-          name: day.name,
-          date: day.date,
-          open: day.open,
-          opensAt: { ...day.opensAt },
-          closesAt: { ...day.closesAt },
+          name: sanitized.name,
+          date: sanitized.date,
+          open: sanitized.open,
+          opensAt: { ...sanitized.opensAt },
+          closesAt: { ...sanitized.closesAt },
         };
 
         if (day.id && day.id !== 0) {
@@ -428,8 +436,8 @@ export const OperatingHoursScreen: React.FC = () => {
 
     setTimePickerTarget({ type: 'special' });
     setTimePickerRange({
-      opensAt: { ...specialDayModal.day.opensAt },
-      closesAt: { ...specialDayModal.day.closesAt },
+      opensAt: sanitizeLocalTime(specialDayModal.day.opensAt, DEFAULT_OPEN_TIME),
+      closesAt: sanitizeLocalTime(specialDayModal.day.closesAt, DEFAULT_CLOSE_TIME),
     });
   }, [specialDayModal]);
 
@@ -439,11 +447,18 @@ export const OperatingHoursScreen: React.FC = () => {
         return;
       }
 
+      const nextChanges: Partial<SpecialDayDTO> = { ...changes };
+
+      if (changes.open === true) {
+        nextChanges.opensAt = sanitizeLocalTime(specialDayModal.day.opensAt, DEFAULT_OPEN_TIME);
+        nextChanges.closesAt = sanitizeLocalTime(specialDayModal.day.closesAt, DEFAULT_CLOSE_TIME);
+      }
+
       setSpecialDayModal({
         visible: true,
         day: {
           ...specialDayModal.day,
-          ...changes,
+          ...nextChanges,
         },
       });
     },
@@ -592,10 +607,9 @@ const WeeklyScheduleModal: React.FC<WeeklyScheduleModalProps> = ({
 }) => {
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.modalBackdrop}>
-          <TouchableWithoutFeedback accessible={false} focusable={false}>
-            <View style={styles.modalCard}>
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Operating Hours</Text>
                 <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
@@ -656,10 +670,8 @@ const WeeklyScheduleModal: React.FC<WeeklyScheduleModalProps> = ({
                   )}
                 </TouchableOpacity>
               </ScrollView>
-            </View>
-          </TouchableWithoutFeedback>
         </View>
-      </TouchableWithoutFeedback>
+      </View>
     </Modal>
   );
 };
@@ -708,10 +720,9 @@ const DailyHoursModal: React.FC<DailyHoursModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
-      <TouchableWithoutFeedback onPress={onCancel}>
-        <View style={styles.modalBackdrop}>
-          <TouchableWithoutFeedback accessible={false} focusable={false}>
-            <View style={styles.timePickerCard}>
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
+        <View style={styles.timePickerCard}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{title}</Text>
                 <TouchableOpacity onPress={onCancel} style={styles.modalCloseButton}>
@@ -729,10 +740,8 @@ const DailyHoursModal: React.FC<DailyHoursModalProps> = ({
               >
                 <Text style={styles.primaryButtonLabel}>Save</Text>
               </TouchableOpacity>
-            </View>
-          </TouchableWithoutFeedback>
         </View>
-      </TouchableWithoutFeedback>
+      </View>
     </Modal>
   );
 };
@@ -840,10 +849,9 @@ const SpecialDayFormModal: React.FC<SpecialDayFormModalProps> = ({
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.modalBackdrop}>
-          <TouchableWithoutFeedback accessible={false} focusable={false}>
-            <View style={styles.specialDayCard}>
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.specialDayCard}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{day.id ? 'Edit special day' : 'Add special day'}</Text>
                 <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
@@ -918,10 +926,8 @@ const SpecialDayFormModal: React.FC<SpecialDayFormModalProps> = ({
                   <Text style={styles.primaryButtonLabel}>Save</Text>
                 )}
               </TouchableOpacity>
-            </View>
-          </TouchableWithoutFeedback>
         </View>
-      </TouchableWithoutFeedback>
+      </View>
     </Modal>
   );
 };
