@@ -22,7 +22,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { FooterNavigation } from '../components/FooterNavigation';
 import { Image } from 'expo-image';
-import { useAuthStore } from '../stores';
+import { useAuthStore, useOrdersStore } from '../stores';
 import { restaurantApi } from '../api/restaurantApi';
 import type { OrderNotificationDTO } from '../types/api';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -37,6 +37,7 @@ export const DashboardScreen: React.FC = () => {
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const logout = useAuthStore((state) => state.logout);
+  const activeOrdersRefreshToken = useOrdersStore((state) => state.activeOrdersRefreshToken);
   const isMountedRef = useRef(true);
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
@@ -81,7 +82,7 @@ export const DashboardScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       void fetchActiveOrders();
-    }, [fetchActiveOrders])
+    }, [fetchActiveOrders, activeOrdersRefreshToken])
   );
 
   const handleReloadOrders = useCallback(() => {

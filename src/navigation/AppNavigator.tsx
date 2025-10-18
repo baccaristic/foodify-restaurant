@@ -1,21 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import {
-  NavigationContainer,
-  createNavigationContainerRef,
-  type NavigationContainerRef,
-} from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuthStore, useOrdersStore } from '../stores';
 import { LoginScreen } from '../screens/LoginScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
-import { NewOrderAlertScreen } from '../screens/NewOrderAlertScreen';
 import { colors } from '../theme/colors';
 import { connectRealtime, disconnectRealtime } from '../realtime';
 import type { RootStackParamList } from './types';
 import type { OrderNotificationDTO } from '../types/api';
 import { OrderDetailsScreen } from '../screens/OrderDetailsScreen';
 import { DriverAssignmentOverlay } from '../components/DriverAssignmentOverlay';
+import { IncomingOrdersOverlay } from '../components/IncomingOrdersOverlay';
 import { MenuScreen } from '../screens/MenuScreen';
 import { AddDishScreen } from '../screens/AddDishScreen';
 import { ViewMenuItemScreen } from '../screens/ViewMenuItemScreen';
@@ -39,11 +35,8 @@ export const AppNavigator: React.FC = () => {
   const handleNewOrder = useCallback(
     (order: OrderNotificationDTO) => {
       pushAlert(order);
-      if (navigationRef.isReady()) {
-        navigationRef.navigate('NewOrderAlert');
-      }
     },
-    [navigationRef, pushAlert]
+    [pushAlert]
   );
 
   const handleOrderUpdate = useCallback(
@@ -126,17 +119,13 @@ export const AppNavigator: React.FC = () => {
               <Stack.Screen name="Menu" component={MenuScreen} />
               <Stack.Screen name="AddDish" component={AddDishScreen} />
               <Stack.Screen name="ViewMenuItem" component={ViewMenuItemScreen} />
-              <Stack.Screen
-                name="NewOrderAlert"
-                component={NewOrderAlertScreen}
-                options={{ presentation: 'transparentModal', cardStyle: styles.modalCard }}
-              />
               <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
             </>
           ) : (
             <Stack.Screen name="Login" component={LoginScreen} />
           )}
         </Stack.Navigator>
+        <IncomingOrdersOverlay />
         <DriverAssignmentOverlay onViewOrder={handleViewAssignedOrder} />
       </View>
     </NavigationContainer>
@@ -152,8 +141,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
-  },
-  modalCard: {
-    backgroundColor: 'transparent',
   },
 });
