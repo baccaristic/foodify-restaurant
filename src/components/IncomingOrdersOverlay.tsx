@@ -4,13 +4,16 @@ import {
   Alert,
   Image,
   ScrollView,
+  StyleProp,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ViewStyle,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { EdgeInsets } from 'react-native-safe-area-context';
 import { moderateScale } from 'react-native-size-matters';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -148,8 +151,8 @@ export const IncomingOrdersOverlay: React.FC = () => {
             pointerEvents={isTop ? 'auto' : 'none'}
             style={[
               styles.cardWrapper,
+              isTop ? styles.topCardWrapper : { top: topOffset },
               {
-                top: topOffset,
                 transform: [{ scale }],
                 opacity,
               },
@@ -161,6 +164,7 @@ export const IncomingOrdersOverlay: React.FC = () => {
               onAccept={() => handleAccept(alert)}
               onDecline={handleClearTopAlert}
               isTop={isTop}
+              insets={insets}
             />
           </View>
         );
@@ -175,6 +179,7 @@ type IncomingOrderCardProps = {
   onAccept: () => void;
   onDecline: () => void;
   isTop: boolean;
+  insets: EdgeInsets;
 };
 
 const IncomingOrderCard: React.FC<IncomingOrderCardProps> = ({
@@ -183,13 +188,38 @@ const IncomingOrderCard: React.FC<IncomingOrderCardProps> = ({
   onAccept,
   onDecline,
   isTop,
+  insets,
 }) => {
   const itemSummaries = useMemo(() => formatOrderItems(order), [order]);
+  const contentStyle = useMemo<StyleProp<ViewStyle>>(() => {
+    if (!isTop) {
+      return styles.cardContent;
+    }
+
+    return [
+      styles.cardContent,
+      {
+        paddingTop: moderateScale(24) + insets.top,
+        paddingBottom: moderateScale(24) + Math.max(insets.bottom, moderateScale(24)),
+      },
+    ];
+  }, [insets.bottom, insets.top, isTop]);
+  const actionsRowStyle = useMemo<StyleProp<ViewStyle>>(
+    () => (isTop ? [styles.actionsRow, styles.fullScreenActionsRow] : styles.actionsRow),
+    [isTop]
+  );
 
   return (
-    <View style={[styles.card, !isTop && styles.mutedCard]}>
+    <View
+      style={[
+        styles.card,
+        isTop ? styles.fullScreenCard : styles.stackedCard,
+        !isTop && styles.mutedCard,
+      ]}
+    >
       <ScrollView
-        contentContainerStyle={styles.cardContent}
+        style={styles.cardScroll}
+        contentContainerStyle={contentStyle}
         bounces={false}
         showsVerticalScrollIndicator={false}
       >
@@ -208,7 +238,7 @@ const IncomingOrderCard: React.FC<IncomingOrderCardProps> = ({
           </View>
         </View>
 
-        <View style={styles.actionsRow}>
+        <View style={actionsRowStyle}>
           <TouchableOpacity style={[styles.actionButton, styles.declineButton]} onPress={onDecline}>
             <Text style={[styles.actionLabel, styles.declineLabel]}>
               Decline <Text style={styles.symbol}>✕</Text>
@@ -252,8 +282,12 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: moderateScale(24),
   },
+  topCardWrapper: {
+    top: 0,
+    bottom: 0,
+    paddingHorizontal: 0,
+  },
   card: {
-    borderRadius: moderateScale(20),
     backgroundColor: colors.white,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -261,17 +295,29 @@ const styles = StyleSheet.create({
     shadowRadius: moderateScale(16),
     shadowOffset: { width: 0, height: moderateScale(4) },
     elevation: 8,
+  },
+  fullScreenCard: {
+    flex: 1,
+    borderRadius: 0,
+  },
+  stackedCard: {
+    borderRadius: moderateScale(20),
     maxHeight: '80%',
   },
   mutedCard: {
     opacity: 0.9,
   },
   cardContent: {
+    flexGrow: 1,
     paddingHorizontal: moderateScale(24),
     paddingTop: moderateScale(24),
     paddingBottom: moderateScale(24),
     alignItems: 'center',
     gap: moderateScale(24),
+  },
+  cardScroll: {
+    flex: 1,
+    alignSelf: 'stretch',
   },
   restaurantName: {
     ...typography.h3,
@@ -303,6 +349,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: moderateScale(16),
     alignSelf: 'stretch',
+  },
+  fullScreenActionsRow: {
+    marginTop: 'auto',
   },
   actionButton: {
     flex: 1,
