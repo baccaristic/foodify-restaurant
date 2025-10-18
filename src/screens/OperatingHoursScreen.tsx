@@ -334,7 +334,12 @@ export const OperatingHoursScreen: React.FC = () => {
   const handleSaveWeekly = useCallback(async () => {
     setIsSavingWeekly(true);
     try {
-      const response = await restaurantApi.updateWeeklySchedule(weeklyDraft);
+      const payload = weeklyDraft.map((day) => ({
+        ...day,
+        opensAt: sanitizeLocalTime(day.opensAt, DEFAULT_OPEN_TIME),
+        closesAt: sanitizeLocalTime(day.closesAt, DEFAULT_CLOSE_TIME),
+      }));
+      const response = await restaurantApi.updateWeeklySchedule(payload);
       applyOperatingHoursResponse(response);
       setWeeklyEditorVisible(false);
     } catch (err) {
@@ -589,7 +594,7 @@ const WeeklyScheduleModal: React.FC<WeeklyScheduleModalProps> = ({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalBackdrop}>
-          <TouchableWithoutFeedback>
+          <TouchableWithoutFeedback accessible={false} focusable={false}>
             <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Operating Hours</Text>
@@ -705,7 +710,7 @@ const DailyHoursModal: React.FC<DailyHoursModalProps> = ({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <TouchableWithoutFeedback onPress={onCancel}>
         <View style={styles.modalBackdrop}>
-          <TouchableWithoutFeedback>
+          <TouchableWithoutFeedback accessible={false} focusable={false}>
             <View style={styles.timePickerCard}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{title}</Text>
@@ -837,7 +842,7 @@ const SpecialDayFormModal: React.FC<SpecialDayFormModalProps> = ({
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalBackdrop}>
-          <TouchableWithoutFeedback>
+          <TouchableWithoutFeedback accessible={false} focusable={false}>
             <View style={styles.specialDayCard}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{day.id ? 'Edit special day' : 'Add special day'}</Text>
